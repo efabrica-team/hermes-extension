@@ -13,19 +13,15 @@ final class HermesWorker extends Command
 {
     private DispatcherInterface $dispatcher;
 
-    private string $name;
-
     public function __construct(DispatcherInterface $dispatcher, string $name = 'hermes:worker')
     {
-        parent::__construct();
+        parent::__construct($name);
         $this->dispatcher = $dispatcher;
-        $this->name = $name;
     }
 
     protected function configure(): void
     {
-        $this->setName($this->name)
-            ->setDescription('Handle hermes messages');
+        $this->setDescription('Handle hermes messages');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
