@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
+use InvalidArgumentException;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
 use Tomaj\Hermes\Dispatcher;
@@ -16,7 +19,7 @@ use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 
-class RedisProxySortedSetDriver implements DriverInterface
+final class RedisProxySortedSetDriver implements DriverInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
@@ -29,9 +32,9 @@ class RedisProxySortedSetDriver implements DriverInterface
 
     private int $refreshInterval;
 
-    private string $scheduleKey;
+    private ?string $scheduleKey;
 
-    public function __construct(RedisProxy $redis, string $key = 'hermes', int $refreshInterval = 1, string $scheduleKey = 'hermes_schedule')
+    public function __construct(RedisProxy $redis, string $key, ?string $scheduleKey = null, int $refreshInterval = 1)
     {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
 
@@ -49,6 +52,9 @@ class RedisProxySortedSetDriver implements DriverInterface
     public function send(MessageInterface $message, int $priority = Dispatcher::DEFAULT_PRIORITY): bool
     {
         if ($message->getExecuteAt() !== null && $message->getExecuteAt() > microtime(true)) {
+            if (!$this->scheduleKey) {
+                throw new InvalidArgumentException('Schedule key is not configured');
+            }
             $this->redis->zadd($this->scheduleKey, $message->getExecuteAt(), $this->serializer->serialize($message));
         } else {
             $key = $this->getKey($priority);
@@ -81,7 +87,8 @@ class RedisProxySortedSetDriver implements DriverInterface
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
-        $queues = array_reverse($this->queues, true);
+        $queues = $this->queues;
+        krsort($queues);
         while (true) {
             $this->checkShutdown();
             if (!$this->shouldProcessNext()) {
@@ -89,10 +96,12 @@ class RedisProxySortedSetDriver implements DriverInterface
             }
 
             // check schedule
-            $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string)microtime(true), ['limit' => [0, 1]]);
-            foreach ($messageStrings as $messageString) {
-                $this->redis->zrem($this->scheduleKey, $messageString);
-                $this->send($this->serializer->unserialize($messageString));
+            if ($this->scheduleKey) {
+                $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string)microtime(true), ['limit' => [0, 1]]);
+                foreach ($messageStrings as $messageString) {
+                    $this->redis->zrem($this->scheduleKey, $messageString);
+                    $this->send($this->serializer->unserialize($messageString));
+                }
             }
 
             $messageString = null;

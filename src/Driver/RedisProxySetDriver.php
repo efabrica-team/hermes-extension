@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
@@ -10,12 +12,13 @@ use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\Driver\MaxItemsTrait;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
 use Tomaj\Hermes\Driver\ShutdownTrait;
+use Tomaj\Hermes\Driver\UnknownPriorityException;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
-use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
+use Tomaj\Hermes\SerializeException;
 
-class RedisProxySetDriver implements DriverInterface
+final class RedisProxySetDriver implements DriverInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
@@ -26,14 +29,13 @@ class RedisProxySetDriver implements DriverInterface
 
     private RedisProxy $redis;
 
-    private string $key;
-
     private int $refreshInterval;
 
-    public function __construct(RedisProxy $redis, string $key = 'hermes', int $refreshInterval = 1)
+    public function __construct(RedisProxy $redis, string $key, int $refreshInterval = 1)
     {
+        $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
+
         $this->redis = $redis;
-        $this->key = $key;
         $this->refreshInterval = $refreshInterval;
         $this->serializer = new MessageSerializer();
     }
@@ -41,16 +43,24 @@ class RedisProxySetDriver implements DriverInterface
     /**
      * @throws RedisProxyException
      * @throws SerializeException
+     * @throws UnknownPriorityException
      */
     public function send(MessageInterface $message, int $priority = Dispatcher::DEFAULT_PRIORITY): bool
     {
-        return (bool)$this->redis->sadd($this->key, $this->serializer->serialize($message));
+        $key = $this->getKey($priority);
+        return (bool)$this->redis->sadd($key, $this->serializer->serialize($message));
+    }
+
+    public function setupPriorityQueue(string $name, int $priority): void
+    {
+        $this->queues[$priority] = $name;
     }
 
     /**
      * @throws RedisProxyException
      * @throws SerializeException
      * @throws ShutdownException
+     * @throws UnknownPriorityException
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
@@ -61,25 +71,55 @@ class RedisProxySetDriver implements DriverInterface
             if (!$this->shouldProcessNext()) {
                 break;
             }
-            while (true) {
-                $messageString = $this->redis->spop($this->key);
-                if (!$messageString) {
-                    break;
+
+            $messageString = null;
+            $foundPriority = null;
+
+            foreach ($queues as $priority => $name) {
+                if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
+                    continue;
                 }
 
-                $callback($this->serializer->unserialize($messageString));
-                $this->incrementProcessedItems();
+                $messageString = $this->pop($this->getKey($priority));
+                $foundPriority = $priority;
+
+                if ($messageString !== null) {
+                    break;
+                }
             }
 
-            if ($this->refreshInterval) {
+            if ($messageString !== null) {
+                $message = $this->serializer->unserialize($messageString);
+                $callback($message, $foundPriority);
+                $this->incrementProcessedItems();
+            } elseif ($this->refreshInterval) {
                 $this->checkShutdown();
                 sleep($this->refreshInterval);
             }
         }
     }
 
-    public function setupPriorityQueue(string $name, int $priority): void
+    /**
+     * @throws UnknownPriorityException
+     */
+    private function getKey(int $priority): string
     {
-        $this->queues[$priority] = $name;
+        if (!isset($this->queues[$priority])) {
+            throw new UnknownPriorityException("Unknown priority {$priority}");
+        }
+        return $this->queues[$priority];
+    }
+
+    /**
+     * @throws RedisProxyException
+     */
+    private function pop(string $key): ?string
+    {
+        $messageString = $this->redis->spop($key);
+        if (is_string($messageString) && $messageString !== '') {
+            return $messageString;
+        }
+
+        return null;
     }
 }

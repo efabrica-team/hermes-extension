@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Efabrica\HermesExtension\Command;
 
 use Symfony\Component\Console\Command\Command;
@@ -7,7 +9,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Tomaj\Hermes\DispatcherInterface;
 
-class HermesWorker extends Command
+final class HermesWorker extends Command
 {
     private DispatcherInterface $dispatcher;
 
