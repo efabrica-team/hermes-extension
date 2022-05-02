@@ -1,0 +1,17 @@
+{
+    "name": "efabrica/hermes-extension",
+    "description": "Extension for tomaj/hermes",
+    "keywords": ["worker", "driver", "redis-proxy"],
+    "license": "MIT",
+    "require": {
+        "php": ">= 7.4 < 8.2",
+        "tomaj/hermes": "^4.0",
+        "lulco/redis-proxy": "dev-master as 1.0.0",
+        "symfony/console": "^5.4 | ^6.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Efabrica\\HermesExtension\\": "src/"
+        }
+    }
+}
