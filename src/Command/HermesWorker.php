@@ -28,6 +28,6 @@ final class HermesWorker extends Command
     {
         $this->dispatcher->handle();
         $output->writeln('Hermes worker end.');
-        return 0;
+        return self::SUCCESS;
     }
 }
