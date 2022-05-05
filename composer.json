@@ -6,7 +6,7 @@
     "require": {
         "php": ">= 7.4 < 8.2",
         "tomaj/hermes": "^4.0",
-        "lulco/redis-proxy": "dev-master as 1.0.0",
+        "lulco/redis-proxy": "~0.5",
         "symfony/console": "^5.4 | ^6.0"
     },
     "autoload": {
