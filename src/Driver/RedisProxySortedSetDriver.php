@@ -58,7 +58,7 @@ final class RedisProxySortedSetDriver implements DriverInterface
             $this->redis->zadd($this->scheduleKey, $message->getExecuteAt(), $this->serializer->serialize($message));
         } else {
             $key = $this->getKey($priority);
-            $this->redis->zadd($key, $message->getExecuteAt(), $this->serializer->serialize($message));
+            $this->redis->zadd($key, $message->getExecuteAt() === null ? microtime(true) : $message->getExecuteAt(), $this->serializer->serialize($message));
         }
         return true;
     }
