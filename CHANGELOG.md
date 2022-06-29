@@ -2,8 +2,11 @@
 
 ## [Unreleased][unreleased]
 
+#### Fixed
+- RedisProxySortedSetDriver - scheduled set pop + remove
+
 ### [0.1.0] - 13.5.2022
-### Added
+#### Added
 - HermesWorker (symfony command)
 - RedisProxySetDriver (driver implementation using RedisProxy)
 - RedisProxySortedSetDriver
