@@ -97,10 +97,19 @@ final class RedisProxySortedSetDriver implements DriverInterface
 
             // check schedule
             if ($this->scheduleKey) {
-                $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string)microtime(true), ['limit' => [0, 1]]);
-                foreach ($messageStrings as $messageString) {
-                    $this->redis->zrem($this->scheduleKey, $messageString);
-                    $this->send($this->serializer->unserialize($messageString));
+                $microTime = microtime(true);
+                $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string) $microTime, ['limit' => [0, 1]]);
+                for ($i = 1; $i <= count($messageStrings); $i++) {
+                    $messageString = $this->pop($this->scheduleKey);
+                    if (!$messageString) {
+                        break;
+                    }
+                    $scheduledMessage = $this->serializer->unserialize($messageString);
+                    $this->send($scheduledMessage);
+
+                    if ($scheduledMessage->getExecuteAt() > $microTime) {
+                        break;
+                    }
                 }
             }
 
