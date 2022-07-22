@@ -1,6 +1,8 @@
 # Change Log
 
 ## [Unreleased][unreleased]
+#### Changed
+- Drivers refreshInterval changed to float (sleep < 1 sec)
 
 #### Fixed
 - RedisProxySortedSetDriver - scheduled set pop + remove

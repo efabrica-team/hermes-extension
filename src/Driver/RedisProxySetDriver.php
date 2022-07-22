@@ -29,9 +29,9 @@ final class RedisProxySetDriver implements DriverInterface
 
     private RedisProxy $redis;
 
-    private int $refreshInterval;
+    private float $refreshInterval;
 
-    public function __construct(RedisProxy $redis, string $key, int $refreshInterval = 1)
+    public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1)
     {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
 
@@ -94,7 +94,7 @@ final class RedisProxySetDriver implements DriverInterface
                 $this->incrementProcessedItems();
             } elseif ($this->refreshInterval) {
                 $this->checkShutdown();
-                sleep($this->refreshInterval);
+                usleep(intval($this->refreshInterval * 1000000));
             }
         }
     }
