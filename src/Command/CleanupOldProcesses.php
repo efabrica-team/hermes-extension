@@ -33,7 +33,9 @@ final class CleanupOldProcesses extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $deletedProcesses = $this->heartbeatStorage->deleteByDate(new DateTime($input->getOption('time')));
+        /** @var string $time */
+        $time = $input->getOption('time');
+        $deletedProcesses = $this->heartbeatStorage->deleteByDate(new DateTime($time));
         $output->writeln('Deleted processes: ' . $deletedProcesses);
         return self::SUCCESS;
     }

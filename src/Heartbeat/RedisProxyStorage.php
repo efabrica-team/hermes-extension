@@ -28,7 +28,7 @@ final class RedisProxyStorage extends AbstractStorage
             'last_ping' => (new DateTime())->format('c'),
             'status' => $status,
         ];
-        $this->redis->hset($this->key, $processIdentifier, json_encode($data));
+        $this->redis->hset($this->key, $processIdentifier, json_encode($data) ?: '{}');
     }
 
     public function load(): array
@@ -73,13 +73,14 @@ final class RedisProxyStorage extends AbstractStorage
         if ($value === null) {
             return null;
         }
+        /** @var array{process_id?: int, host_name?: string, last_ping?: string, status?: string} $data */
         $data = json_decode($value, true) ?: [];
         if ($data === []) {
             return null;
         }
         return new HermesProcess(
-            $data['process_id'],
-            $data['host_name'],
+            $data['process_id'] ?? 0,
+            $data['host_name'] ?? '',
             new DateTime($data['last_ping'] ?? 'now'),
             $data['status'] ?? HermesProcess::STATUS_UNKNOWN
         );

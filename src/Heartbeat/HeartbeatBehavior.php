@@ -20,7 +20,7 @@ trait HeartbeatBehavior
         if ($this->heartbeatStorage === null) {
             return;
         }
-        $this->heartbeatStorage->ping(getmypid(), gethostname(), $status);
+        $this->heartbeatStorage->ping($this->getPid(), $this->getHostName(), $status);
     }
 
     public function checkToBeKilled(): void
@@ -29,7 +29,7 @@ trait HeartbeatBehavior
             return;
         }
 
-        $process = $this->heartbeatStorage->get(getmypid(), gethostname());
+        $process = $this->heartbeatStorage->get($this->getPid(), $this->getHostName());
         if ($process === null) {
             return;
         }
@@ -38,5 +38,15 @@ trait HeartbeatBehavior
             $this->heartbeatStorage->delete($process->getProcessId(), $process->getHostName());
             throw new ShutdownException();
         }
+    }
+
+    private function getPid(): int
+    {
+        return getmypid() ?: 0;
+    }
+
+    private function getHostName(): string
+    {
+        return gethostname() ?: '';
     }
 }
