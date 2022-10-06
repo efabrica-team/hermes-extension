@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
+use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
 use Tomaj\Hermes\Dispatcher;
@@ -23,6 +24,7 @@ final class RedisProxySetDriver implements DriverInterface
     use MaxItemsTrait;
     use ShutdownTrait;
     use SerializerAwareTrait;
+    use HeartbeatBehavior;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -68,6 +70,7 @@ final class RedisProxySetDriver implements DriverInterface
         krsort($queues);
         while (true) {
             $this->checkShutdown();
+            $this->checkToBeKilled();
             if (!$this->shouldProcessNext()) {
                 break;
             }
@@ -89,11 +92,14 @@ final class RedisProxySetDriver implements DriverInterface
             }
 
             if ($messageString !== null) {
+                $this->ping('processing');
                 $message = $this->serializer->unserialize($messageString);
                 $callback($message, $foundPriority);
                 $this->incrementProcessedItems();
             } elseif ($this->refreshInterval) {
                 $this->checkShutdown();
+                $this->checkToBeKilled();
+                $this->ping('idle');
                 usleep(intval($this->refreshInterval * 1000000));
             }
         }

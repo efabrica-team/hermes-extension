@@ -2,6 +2,9 @@
 
 ## [Unreleased][unreleased]
 
+#### Added
+- Heartbeat functionality
+
 ### [0.2.0] - 22.7.2022
 #### Changed
 - Drivers refreshInterval changed to float (sleep < 1 sec)
