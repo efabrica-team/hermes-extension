@@ -4,3 +4,4 @@ Extension for tomaj/hermes. It contains:
 - RedisProxySetDriver (driver implementation using RedisProxy)
 - RedisProxySortedSetDriver 
 - DummyDriver (for testing purposes)
+- Heartbeat functionality

@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">= 7.4 < 8.2",
+        "ext-json": "*",
         "tomaj/hermes": "^4.0",
         "lulco/redis-proxy": "~0.5",
         "symfony/console": "^5.4 | ^6.0"

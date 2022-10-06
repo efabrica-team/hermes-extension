@@ -55,7 +55,7 @@ final class RedisProxyStorage extends AbstractStorage
             if ($hermesProcess->getLastPing() > $lastPing) {
                 continue;
             }
-            if ($this->delete($hermesProcess->getProcessId())) {
+            if ($this->delete($hermesProcess->getProcessId(), $hermesProcess->getHostName())) {
                 $deletedProcesses++;
             }
         }
@@ -77,6 +77,11 @@ final class RedisProxyStorage extends AbstractStorage
         if ($data === []) {
             return null;
         }
-        return new HermesProcess($data['process_id'], $data['host_name'], new DateTime($data['last_ping'] ?? 'now'), $data['status'] ?? 'unknown');
+        return new HermesProcess(
+            $data['process_id'],
+            $data['host_name'],
+            new DateTime($data['last_ping'] ?? 'now'),
+            $data['status'] ?? HermesProcess::STATUS_UNKNOWN
+        );
     }
 }

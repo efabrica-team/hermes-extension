@@ -42,9 +42,8 @@ final class MemoryStorage extends AbstractStorage
         return $deletedProcesses;
     }
 
-    public function get(int $processId, string $hostName): ?HermesProcess
+    protected function getByIdentifier(string $processIdentifier): ?HermesProcess
     {
-        $processIdentifier = $this->getProcessIdentifier($processId, $hostName);
         return $this->processes[$processIdentifier] ?? null;
     }
 }

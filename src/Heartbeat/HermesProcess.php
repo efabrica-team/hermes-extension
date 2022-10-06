@@ -14,6 +14,8 @@ final class HermesProcess
 
     public const STATUS_KILLED = 'killed';
 
+    public const STATUS_UNKNOWN = 'unknown';
+
     private int $processId;
 
     private string $hostName;

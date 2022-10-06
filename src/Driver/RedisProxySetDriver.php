@@ -6,6 +6,7 @@ namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
+use Efabrica\HermesExtension\Heartbeat\HermesProcess;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
 use Tomaj\Hermes\Dispatcher;
@@ -92,14 +93,14 @@ final class RedisProxySetDriver implements DriverInterface
             }
 
             if ($messageString !== null) {
-                $this->ping('processing');
+                $this->ping(HermesProcess::STATUS_PROCESSING);
                 $message = $this->serializer->unserialize($messageString);
                 $callback($message, $foundPriority);
                 $this->incrementProcessedItems();
             } elseif ($this->refreshInterval) {
                 $this->checkShutdown();
                 $this->checkToBeKilled();
-                $this->ping('idle');
+                $this->ping(HermesProcess::STATUS_IDLE);
                 usleep(intval($this->refreshInterval * 1000000));
             }
         }
