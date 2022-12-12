@@ -2,6 +2,9 @@
 
 ## [Unreleased][unreleased]
 
+### Added
+- Support for PHP 8.2
+
 ## [0.3.0] - 2022-10-07
 ### Added
 - Heartbeat functionality
