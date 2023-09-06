@@ -1,6 +1,8 @@
 # Change Log
 
 ## [Unreleased][unreleased]
+
+## [1.0.0] - 2023-09-06
 ### Added
 - redis-proxy 1.0 support
 
@@ -26,7 +28,8 @@
 - RedisProxySortedSetDriver
 - DummyDriver (for testing purposes)
 
-[unreleased]: https://github.com/efabrica-team/hermes-extension/compare/0.3.1...HEAD
+[unreleased]: https://github.com/efabrica-team/hermes-extension/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/efabrica-team/hermes-extension/compare/0.3.1...1.0.0
 [0.3.1]: https://github.com/efabrica-team/hermes-extension/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/efabrica-team/hermes-extension/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/efabrica-team/hermes-extension/compare/0.1.0...0.2.0
