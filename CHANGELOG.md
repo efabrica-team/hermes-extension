@@ -1,6 +1,8 @@
 # Change Log
 
 ## [Unreleased][unreleased]
+### Added
+- redis-proxy 1.0 support
 
 ## [0.3.1] - 2022-12-12
 ### Added
