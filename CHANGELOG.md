@@ -2,7 +2,7 @@
 
 ## [Unreleased][unreleased]
 
--- RedisProxyListDriver - list driver for RedisProxy
+- RedisProxyListDriver - list driver for RedisProxy
 
 ## [1.0.0] - 2023-09-06
 ### Added
