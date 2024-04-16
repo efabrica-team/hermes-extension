@@ -84,7 +84,8 @@ final class RedisProxyListDriver implements DriverInterface
                     continue;
                 }
                 $key = $this->getKey($priority);
-                if ($length = $this->getLength($key) === 0) {
+                $length = $this->getLength($key);
+                if ($length === 0) {
                     continue;
                 }
                 for ($i = 0; $i < $length; $i++) {
