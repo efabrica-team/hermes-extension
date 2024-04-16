@@ -136,7 +136,7 @@ final class RedisProxyListDriver implements DriverInterface
     /**
      * @throws RedisProxyException
      */
-    private function getLength(string $key): ?int
+    private function getLength(string $key): int
     {
         return $this->redis->llen($key);
     }
