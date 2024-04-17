@@ -17,8 +17,8 @@ use Tomaj\Hermes\Driver\ShutdownTrait;
 use Tomaj\Hermes\Driver\UnknownPriorityException;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
-use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tomaj\Hermes\SerializeException;
+use Tomaj\Hermes\Shutdown\ShutdownException;
 
 final class RedisProxySetDriver implements DriverInterface
 {

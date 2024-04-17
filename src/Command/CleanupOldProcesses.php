@@ -6,10 +6,7 @@ namespace Efabrica\HermesExtension\Command;
 
 use DateTime;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatStorageInterface;
-use Efabrica\HermesExtension\Heartbeat\HermesProcess;
-use Efabrica\HermesExtension\Ping\PingInterface;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
