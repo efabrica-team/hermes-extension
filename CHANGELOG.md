@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Support for PHP 8.3 and Symfony 7
 
+- RedisProxyListDriver - list driver for RedisProxy
+
 ## [1.0.0] - 2023-09-06
 ### Added
 - redis-proxy 1.0 support
