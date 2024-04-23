@@ -51,7 +51,7 @@ final class RedisProxyListDriver implements DriverInterface
     public function send(MessageInterface $message, int $priority = Dispatcher::DEFAULT_PRIORITY): bool
     {
         $key = $this->getKey($priority);
-        return (bool)$this->redis->lpush($key, $this->serializer->serialize($message));
+        return (bool)$this->redis->rpush($key, $this->serializer->serialize($message));
     }
 
     public function setupPriorityQueue(string $name, int $priority): void
@@ -88,9 +88,9 @@ final class RedisProxyListDriver implements DriverInterface
                 if ($length === 0) {
                     continue;
                 }
+                $foundPriority = $priority;
                 for ($i = 0; $i < $length; $i++) {
                     $messageString = $this->pop($key);
-                    $foundPriority = $priority;
 
                     if ($messageString !== null) {
                         $this->ping(HermesProcess::STATUS_PROCESSING);
