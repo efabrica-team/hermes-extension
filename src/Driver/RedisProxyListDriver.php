@@ -84,20 +84,16 @@ final class RedisProxyListDriver implements DriverInterface
                     continue;
                 }
                 $key = $this->getKey($priority);
-                $length = $this->getLength($key);
-                if ($length === 0) {
-                    continue;
-                }
                 $foundPriority = $priority;
-                for ($i = 0; $i < $length; $i++) {
+                while (true) {
                     $messageString = $this->pop($key);
-
-                    if ($messageString !== null) {
-                        $this->ping(HermesProcess::STATUS_PROCESSING);
-                        $message = $this->serializer->unserialize($messageString);
-                        $callback($message, $foundPriority);
-                        $this->incrementProcessedItems();
+                    if ($messageString === null) {
+                        break;
                     }
+                    $this->ping(HermesProcess::STATUS_PROCESSING);
+                    $message = $this->serializer->unserialize($messageString);
+                    $callback($message, $foundPriority);
+                    $this->incrementProcessedItems();
                 }
             }
 
@@ -132,13 +128,5 @@ final class RedisProxyListDriver implements DriverInterface
         }
 
         return null;
-    }
-
-    /**
-     * @throws RedisProxyException
-     */
-    private function getLength(string $key): int
-    {
-        return $this->redis->llen($key);
     }
 }
