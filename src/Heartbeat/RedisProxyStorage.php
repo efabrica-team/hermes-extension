@@ -35,6 +35,10 @@ final class RedisProxyStorage extends AbstractStorage
     {
         $processes = [];
         foreach ($this->redis->hgetall($this->key) as $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+
             $process = $this->createHermesProcessFromRedisValue($value);
             if ($process) {
                 $processes[] = $process;
