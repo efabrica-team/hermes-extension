@@ -93,6 +93,7 @@ final class RedisProxySortedSetDriver implements DriverInterface
         $queues = $this->queues;
         krsort($queues);
         while (true) {
+            gc_collect_cycles();
             $this->checkShutdown();
             $this->checkToBeKilled();
             if (!$this->shouldProcessNext()) {
