@@ -80,12 +80,18 @@ final class RedisProxyListDriver implements DriverInterface
             $foundPriority = null;
 
             foreach ($queues as $priority => $name) {
+                if (!$this->shouldProcessNext()) {
+                    break 2;
+                }
                 if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
                     continue;
                 }
                 $key = $this->getKey($priority);
                 $foundPriority = $priority;
                 while (true) {
+                    if (!$this->shouldProcessNext()) {
+                        break 3;
+                    }
                     $messageString = $this->pop($key);
                     if ($messageString === null) {
                         break;
