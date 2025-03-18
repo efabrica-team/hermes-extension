@@ -7,8 +7,8 @@ namespace Efabrica\HermesExtension\Command;
 use Efabrica\HermesExtension\Driver\QueueAwareInterface;
 use ReflectionObject;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Tomaj\Hermes\DispatcherInterface;
 use Tomaj\Hermes\Driver\DriverInterface;
@@ -36,7 +36,7 @@ final class HermesWorker extends Command
             $this->addOption(
                 'restrict-priorities',
                 null,
-                InputArgument::OPTIONAL | InputArgument::IS_ARRAY,
+                InputOption::VALUE_IS_ARRAY | InputOption::VALUE_OPTIONAL,
                 'Restricts the priorities to handle by this worker. Accepts multiple integer values of priorities:' . $queuesHint,
             );
         }
