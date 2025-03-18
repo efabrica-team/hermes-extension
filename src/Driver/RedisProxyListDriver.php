@@ -17,15 +17,16 @@ use Tomaj\Hermes\Driver\ShutdownTrait;
 use Tomaj\Hermes\Driver\UnknownPriorityException;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
-use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tomaj\Hermes\SerializeException;
+use Tomaj\Hermes\Shutdown\ShutdownException;
 
-final class RedisProxyListDriver implements DriverInterface
+final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
     use SerializerAwareTrait;
     use HeartbeatBehavior;
+    use QueueAwareTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
