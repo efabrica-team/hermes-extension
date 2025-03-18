@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Command;
 
 use Efabrica\HermesExtension\Driver\QueueAwareInterface;
-use ReflectionClass;
+use ReflectionObject;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -67,7 +67,7 @@ final class HermesWorker extends Command
 
     private function getDriverFromHandler(): ?DriverInterface
     {
-        $reflection = new ReflectionClass($this->dispatcher);
+        $reflection = new ReflectionObject($this->dispatcher);
         $properties = $reflection->getProperties();
         foreach ($properties as $property) {
             $property->setAccessible(true);
