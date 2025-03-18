@@ -34,13 +34,16 @@ final class RedisProxySetDriver implements DriverInterface
 
     private float $refreshInterval;
 
-    public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1)
+    private int $iterationToPing;
+
+    public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1, int $iterationToPing = 10)
     {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
 
         $this->redis = $redis;
         $this->refreshInterval = $refreshInterval;
         $this->serializer = new MessageSerializer();
+        $this->iterationToPing = $iterationToPing;
     }
 
     /**
@@ -69,9 +72,11 @@ final class RedisProxySetDriver implements DriverInterface
     {
         $queues = $this->queues;
         krsort($queues);
+        $counter = 0;
         while (true) {
             $this->checkShutdown();
             $this->checkToBeKilled();
+            $counter++;
             if (!$this->shouldProcessNext()) {
                 break;
             }
@@ -93,14 +98,20 @@ final class RedisProxySetDriver implements DriverInterface
             }
 
             if ($messageString !== null) {
-                $this->ping(HermesProcess::STATUS_PROCESSING);
+                if ($counter % $this->iterationToPing === 0) {
+                    $this->ping(HermesProcess::STATUS_PROCESSING);
+                    $counter = 0;
+                }
                 $message = $this->serializer->unserialize($messageString);
                 $callback($message, $foundPriority);
                 $this->incrementProcessedItems();
             } elseif ($this->refreshInterval) {
                 $this->checkShutdown();
                 $this->checkToBeKilled();
-                $this->ping(HermesProcess::STATUS_IDLE);
+                if ($counter % $this->iterationToPing === 0) {
+                    $this->ping(HermesProcess::STATUS_IDLE);
+                    $counter = 0;
+                }
                 usleep(intval($this->refreshInterval * 1000000));
             }
         }
