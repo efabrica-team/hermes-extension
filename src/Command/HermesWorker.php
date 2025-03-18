@@ -19,8 +19,8 @@ final class HermesWorker extends Command
 
     public function __construct(DispatcherInterface $dispatcher, string $name = 'hermes:worker')
     {
-        parent::__construct($name);
         $this->dispatcher = $dispatcher;
+        parent::__construct($name);
     }
 
     protected function configure(): void
