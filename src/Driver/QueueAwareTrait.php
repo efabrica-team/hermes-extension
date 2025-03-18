@@ -9,13 +9,13 @@ trait QueueAwareTrait
     /**
      * @var array<int, string>
      */
-    private array $queue = [];
+    private array $queues = [];
 
     /**
      * @return array<int, string>
      */
-    public function getQueue(): array
+    public function getQueues(): array
     {
-        return $this->queue;
+        return $this->queues;
     }
 }

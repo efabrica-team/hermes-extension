@@ -9,5 +9,5 @@ interface QueueAwareInterface
     /**
      * @return array<int, string>
      */
-    public function getQueue(): array;
+    public function getQueues(): array;
 }

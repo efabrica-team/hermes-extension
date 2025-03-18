@@ -91,6 +91,6 @@ final class HermesWorker extends Command
             return null;
         }
 
-        return $driver->getQueue();
+        return $driver->getQueues();
     }
 }
