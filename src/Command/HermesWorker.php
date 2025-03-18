@@ -31,13 +31,13 @@ final class HermesWorker extends Command
         if ($queues) {
             $queuesHint = '';
             foreach ($queues as $priority => $queue) {
-                $queuesHint .= PHP_EOL . "  <info>{$priority}</info>: <comment>{$queue}</comment>";
+                $queuesHint .= PHP_EOL . "<info>{$priority}</info>: <comment>{$queue}</comment>";
             }
             $this->addOption(
-                'restrict-priorities',
-                null,
+                'restrict-priority',
+                'p',
                 InputOption::VALUE_IS_ARRAY | InputOption::VALUE_OPTIONAL,
-                'Restricts the priorities to handle by this worker. Accepts multiple integer values of priorities:' . $queuesHint,
+                'Restricts the priorities to handle by this worker. Can be used multiple times with these priorities:' . $queuesHint,
             );
         }
     }
@@ -48,7 +48,7 @@ final class HermesWorker extends Command
         $queues = $this->getRegisteredQueues();
 
         if ($queues) {
-            $prioritiesInput = $input->getOption('restrict-priorities');
+            $prioritiesInput = $input->getOption('restrict-priority');
             if (is_array($prioritiesInput)) {
                 $priorities = array_map('intval', $prioritiesInput);
                 $queuePriorities = array_keys($queues);
