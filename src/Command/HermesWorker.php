@@ -33,8 +33,9 @@ final class HermesWorker extends Command
             foreach ($queues as $priority => $queue) {
                 $queuesHint .= PHP_EOL . "  <info>{$priority}</info>: <comment>{$queue}</comment>";
             }
-            $this->addArgument(
-                'restrict-priority',
+            $this->addOption(
+                'restrict-priorities',
+                null,
                 InputArgument::OPTIONAL | InputArgument::IS_ARRAY,
                 'Restricts the priorities to handle by this worker. Accepts multiple integer values of priorities:' . $queuesHint,
             );
@@ -47,7 +48,7 @@ final class HermesWorker extends Command
         $queues = $this->getRegisteredQueues();
 
         if ($queues) {
-            $prioritiesInput = $input->getArgument('restrict-priority');
+            $prioritiesInput = $input->getOption('restrict-priorities');
             if (is_array($prioritiesInput)) {
                 $priorities = array_map('intval', $prioritiesInput);
                 $queuePriorities = array_keys($queues);
