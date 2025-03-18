@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- HermesWorker can now accept priorities restriction
+- HermesWorker can now accept priorities restriction as option
 
 ## [1.2.1] - 2025-01-10
 ### Fixed
