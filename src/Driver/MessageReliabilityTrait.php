@@ -94,25 +94,77 @@ trait MessageReliabilityTrait
     {
         $this->updateMessageStatus($message, $foundPriority);
         if ($this->isReliableMessageHandlingEnabled() && extension_loaded('pcntl')) {
-            $oldHandler = pcntl_signal_get_handler(SIGALRM);
-            pcntl_signal(SIGALRM, function () use ($message, $foundPriority) {
+            $pipe = sys_get_temp_dir() . '/' . uniqid('hermes_monitor_', true) . '-' . $this->myIdentifier . '.pipe';
+
+            $signals = false;
+            if (!file_exists($pipe) && !posix_mkfifo($pipe, 0600)) {
+                $signals = true;
+            }
+
+            if ($signals) {
+                $oldHandler = pcntl_signal_get_handler(SIGALRM);
+                $async = pcntl_async_signals(true);
+                pcntl_signal(SIGALRM, function () use ($message, $foundPriority) {
+                    try {
+                        $this->updateMessageStatus($message, $foundPriority);
+                        pcntl_alarm(1);
+                    } catch (Throwable $exception) {
+                    }
+                });
                 try {
-                    $this->updateMessageStatus($message, $foundPriority);
                     pcntl_alarm(1);
-                } catch (Throwable $exception) {
+                    $callback($message, $foundPriority);
+                } finally {
+                    pcntl_alarm(0);
+                    if (is_string($oldHandler) && function_exists($oldHandler)) {
+                        pcntl_signal(SIGALRM, $oldHandler);
+                    } elseif (is_int($oldHandler)) {
+                        pcntl_signal(SIGALRM, $oldHandler);
+                    } else {
+                        pcntl_signal(SIGALRM, SIG_DFL);
+                    }
+                    pcntl_async_signals($async);
                 }
-            });
-            try {
-                pcntl_alarm(1);
-                $callback($message, $foundPriority);
-            } finally {
-                pcntl_alarm(0);
-                if (is_string($oldHandler) && function_exists($oldHandler)) {
-                    pcntl_signal(SIGALRM, $oldHandler);
-                } elseif (is_int($oldHandler)) {
-                    pcntl_signal(SIGALRM, $oldHandler);
+            } else {
+                $pid = pcntl_fork();
+
+                if ($pid === -1) {
+                    @unlink($pipe);
+                } elseif ($pid) {
+                    try {
+                        $callback($message, $foundPriority);
+                    } finally {
+                        do {
+                            $p = fopen($pipe, 'w');
+                        } while ($p === false);
+                        fwrite($p, 'DONE');
+                        fclose($p);
+
+                        pcntl_waitpid($pid, $status);
+                        @unlink($pipe);
+                    }
                 } else {
-                    pcntl_signal(SIGALRM, SIG_DFL);
+                    $parentPid = posix_getppid();
+
+                    do {
+                        $p = fopen($pipe, 'r');
+                    } while ($p === false);
+                    stream_set_blocking($p, false);
+
+                    while (true) {
+                        if (posix_getpgid($parentPid) === false) {
+                            exit(0); // Parent process is killed, so this ends too ...
+                        }
+
+                        $this->updateMessageStatus($message, $foundPriority);
+
+                        $data = fread($p, 1024);
+                        if ($data === 'DONE') {
+                            break;
+                        }
+
+                        sleep(1);
+                    }
                 }
             }
         } else {
