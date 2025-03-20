@@ -8,7 +8,9 @@ use Closure;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use Throwable;
+use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\EmitterInterface;
+use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
 
 trait MessageReliabilityTrait
@@ -39,19 +41,29 @@ trait MessageReliabilityTrait
         return $this->currentMessageStoragePrefix !== null;
     }
 
+    private function getMyKey(): string
+    {
+        return sprintf(
+            '[%s][%s][%s]',
+            $this->myIdentifier,
+            getmypid() ?: 'unknown',
+            gethostname() ?: 'unknown',
+        );
+    }
+
+    private function getAgentKey(string $key): string
+    {
+        return $this->currentMessageStoragePrefix . ':agent' . $key;
+    }
+
     private function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void
     {
         if (!$this->isReliableMessageHandlingEnabled()) {
             return;
         }
 
-        $key = sprintf(
-            '[%s][%s][%s]',
-            $this->myIdentifier,
-            getmypid() ?: 'unknown',
-            gethostname() ?: 'unknown',
-        );
-        $agentKey = $this->currentMessageStoragePrefix . ':agent' . $key;
+        $key = $this->getMyKey();
+        $agentKey = $this->getAgentKey($key);
 
         $status = (object)[
             'timestamp' => microtime(true),
@@ -107,5 +119,81 @@ trait MessageReliabilityTrait
             $callback($message, $foundPriority);
         }
         $this->updateMessageStatus();
+    }
+
+    private function recoverMessages(): void
+    {
+        if (!$this->isReliableMessageHandlingEnabled()) {
+            return;
+        }
+
+        if (!$this->myEmitter || !$this->myIdentifier || !$this->currentMessageStoragePrefix) {
+            return;
+        }
+
+        $lockKey = sprintf(
+            '%s:lock',
+            $this->currentMessageStoragePrefix,
+        );
+
+        if ($this->redis->setex($lockKey, MessageReliabilityInterface::LOCK_TTL, $this->myIdentifier)) {
+            try {
+                $start = hrtime(true);
+
+                $cursor = null;
+
+                do {
+                    try {
+                        $items = $this->redis->hscan($this->currentMessageStoragePrefix, $cursor, null, 1000);
+                        if (!is_array($items)) {
+                            break;
+                        }
+                        foreach ($items as $field => $value) {
+                            $agentKey = $this->getAgentKey($field);
+                            if ($this->redis->exists($agentKey)) {
+                                continue;
+                            }
+                            $status = json_decode($value);
+                            if (hrtime(true) - $start >= MessageReliabilityInterface::LOCK_TIME_DIFF_MAX) {
+                                return;
+                            }
+                            $this->redis->hdel($this->currentMessageStoragePrefix, $field);
+                            if ($status->message !== null && $status->priority !== null) {
+                                $message = (object)$status->message;
+                                $priority = $status->priority;
+                                $newMessage = new Message(
+                                    $message->type,
+                                    $message->payload,
+                                    $message->id,
+                                    $message->created,
+                                    $message->execute_at,
+                                    $message->retries,
+                                );
+                                if (!isset($this->queues[$priority])) {
+                                    $priority = Dispatcher::DEFAULT_PRIORITY;
+                                }
+                                for ($retry = 0; $retry <= MessageReliabilityInterface::REQUEUE_REPEATS; $retry++) {
+                                    try {
+                                        $this->myEmitter->emit($newMessage, $priority);
+                                        break;
+                                    } catch (Throwable $exception) {
+                                        if ($retry === MessageReliabilityInterface::REQUEUE_REPEATS) {
+                                            break;
+                                        }
+                                        usleep(100000);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Throwable $exception) {
+                    }
+                } while (hrtime(true) - $start < MessageReliabilityInterface::LOCK_TIME_DIFF_MAX && $cursor !== 0);
+            } finally {
+                try {
+                    $this->redis->del($lockKey);
+                } catch (Throwable $exception) {
+                }
+            }
+        }
     }
 }

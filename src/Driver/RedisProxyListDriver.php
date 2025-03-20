@@ -78,6 +78,8 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                 break;
             }
 
+            $this->recoverMessages();
+
             $messageString = null;
             $foundPriority = null;
 
