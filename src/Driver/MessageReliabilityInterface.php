@@ -8,5 +8,5 @@ use Tomaj\Hermes\EmitterInterface;
 
 interface MessageReliabilityInterface
 {
-    public function enableReliableMessageHandling(string $storagePrefix, EmitterInterface $emitter): void;
+    public function enableReliableMessageHandling(string $storagePrefix, EmitterInterface $emitter, int $keepAliveTTL): void;
 }

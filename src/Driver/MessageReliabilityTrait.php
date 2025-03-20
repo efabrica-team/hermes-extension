@@ -20,10 +20,16 @@ trait MessageReliabilityTrait
 
     private ?string $myIdentifier = null;
 
-    public function enableReliableMessageHandling(string $storagePrefix, EmitterInterface $emitter): void
-    {
+    private ?int $keepAliveTTL = null;
+
+    public function enableReliableMessageHandling(
+        string $storagePrefix,
+        EmitterInterface $emitter,
+        int $keepAliveTTL,
+    ): void {
         $this->currentMessageStoragePrefix = $storagePrefix;
         $this->myEmitter = $emitter;
+        $this->keepAliveTTL = $keepAliveTTL;
         $this->myIdentifier = Uuid::uuid4()->toString();
     }
 
@@ -44,6 +50,7 @@ trait MessageReliabilityTrait
             getmypid() ?: 'unknown',
             gethostname() ?: 'unknown',
         );
+        $agentKey = $this->currentMessageStoragePrefix . $key;
 
         $status = (object)[
             'timestamp' => microtime(true),
@@ -62,8 +69,9 @@ trait MessageReliabilityTrait
 
         try {
             $encoded = json_encode($status);
-            if ($encoded !== false && $this->currentMessageStoragePrefix !== null) {
+            if ($encoded !== false && $this->currentMessageStoragePrefix !== null && $this->keepAliveTTL !== null) {
                 $this->redis->hset($this->currentMessageStoragePrefix, $key, $encoded);
+                $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
             }
         } catch (Throwable $exception) {
         }
