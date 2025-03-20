@@ -102,23 +102,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     }
                     $this->ping(HermesProcess::STATUS_PROCESSING);
                     $message = $this->serializer->unserialize($messageString);
-                    $this->updateMessageStatus($message, $foundPriority);
-                    if ($this->isReliableMessageHandlingEnabled()) {
-                        $function = function () use ($message, $foundPriority) {
-                            $this->updateMessageStatus($message, $foundPriority);
-                        };
-                        try {
-                            register_tick_function($function);
-                            declare(ticks=100) {
-                                $callback($message, $foundPriority);
-                            }
-                        } finally {
-                            unregister_tick_function($function);
-                        }
-                    } else {
-                        $callback($message, $foundPriority);
-                    }
-                    $this->updateMessageStatus();
+                    $this->monitorCallback($callback, $message, $foundPriority);
                     $this->incrementProcessedItems();
                 }
             }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Efabrica\HermesExtension\Driver;
 
+use Closure;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use Throwable;
@@ -25,7 +26,7 @@ trait MessageReliabilityTrait
     public function enableReliableMessageHandling(
         string $storagePrefix,
         EmitterInterface $emitter,
-        int $keepAliveTTL,
+        int $keepAliveTTL
     ): void {
         $this->currentMessageStoragePrefix = $storagePrefix;
         $this->myEmitter = $emitter;
@@ -50,7 +51,7 @@ trait MessageReliabilityTrait
             getmypid() ?: 'unknown',
             gethostname() ?: 'unknown',
         );
-        $agentKey = $this->currentMessageStoragePrefix . $key;
+        $agentKey = $this->currentMessageStoragePrefix . ':agent' . $key;
 
         $status = (object)[
             'timestamp' => microtime(true),
@@ -75,5 +76,36 @@ trait MessageReliabilityTrait
             }
         } catch (Throwable $exception) {
         }
+    }
+
+    private function monitorCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
+    {
+        $this->updateMessageStatus($message, $foundPriority);
+        if ($this->isReliableMessageHandlingEnabled() && extension_loaded('pcntl')) {
+            $oldHandler = pcntl_signal_get_handler(SIGALRM);
+            pcntl_signal(SIGALRM, function () use ($message, $foundPriority) {
+                try {
+                    $this->updateMessageStatus($message, $foundPriority);
+                    pcntl_alarm(1);
+                } catch (Throwable $exception) {
+                }
+            });
+            try {
+                pcntl_alarm(1);
+                $callback($message, $foundPriority);
+            } finally {
+                pcntl_alarm(0);
+                if (is_string($oldHandler) && function_exists($oldHandler)) {
+                    pcntl_signal(SIGALRM, $oldHandler);
+                } elseif (is_int($oldHandler)) {
+                    pcntl_signal(SIGALRM, $oldHandler);
+                } else {
+                    pcntl_signal(SIGALRM, SIG_DFL);
+                }
+            }
+        } else {
+            $callback($message, $foundPriority);
+        }
+        $this->updateMessageStatus();
     }
 }
