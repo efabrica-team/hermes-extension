@@ -47,7 +47,16 @@ trait MessageReliabilityTrait
 
         $status = (object)[
             'timestamp' => microtime(true),
-            'message' => $message,
+            'message' => $message === null
+                ? null
+                : [
+                    'id' => $message->getId(),
+                    'type' => $message->getType(),
+                    'payload' => $message->getPayload(),
+                    'execute_at' => $message->getExecuteAt(),
+                    'retries' => $message->getRetries(),
+                    'created' => $message->getCreated(),
+                ],
             'priority' => $priority,
         ];
 
