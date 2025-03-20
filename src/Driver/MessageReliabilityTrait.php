@@ -154,22 +154,22 @@ trait MessageReliabilityTrait
                             if ($this->redis->get($agentKey) !== null) {
                                 continue;
                             }
-                            $status = json_decode($value);
+                            $status = json_decode($value, true);
                             echo 'STATUS: ' . print_r($status, true) . "\n";
                             if (hrtime(true) - $start >= MessageReliabilityInterface::LOCK_TIME_DIFF_MAX) {
                                 return;
                             }
                             $this->redis->hdel($this->currentMessageStoragePrefix, $field);
-                            if ($status->message !== null && $status->priority !== null) {
-                                $message = (object)$status->message;
-                                $priority = $status->priority;
+                            if (isset($status['message'])) {
+                                $message = $status['message'];
+                                $priority = $status['priority'] ?? Dispatcher::DEFAULT_PRIORITY;
                                 $newMessage = new Message(
-                                    $message->type,
-                                    $message->payload,
-                                    $message->id,
-                                    $message->created,
-                                    $message->execute_at,
-                                    $message->retries,
+                                    $message['type'],
+                                    $message['payload'],
+                                    $message['id'],
+                                    $message['created'],
+                                    $message['execute_at'],
+                                    $message['retries'],
                                 );
                                 echo 'NEW MESSAGE: ' . print_r($newMessage, true) . "\n";
                                 if (!isset($this->queues[$priority])) {
@@ -190,6 +190,7 @@ trait MessageReliabilityTrait
                             }
                         }
                     } catch (Throwable $exception) {
+                        echo 'ERROR: ' . $exception->getMessage() . "\n";
                     }
                 } while (hrtime(true) - $start < MessageReliabilityInterface::LOCK_TIME_DIFF_MAX && $cursor !== 0);
             } finally {
