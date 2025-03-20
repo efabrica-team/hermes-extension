@@ -25,6 +25,11 @@ trait MessageReliabilityTrait
 
     private ?int $keepAliveTTL = null;
 
+    /**
+     * @var int|string
+     */
+    private $myPID = 0;
+
     public function enableReliableMessageHandling(
         string $storagePrefix,
         EmitterInterface $emitter,
@@ -34,6 +39,7 @@ trait MessageReliabilityTrait
         $this->myEmitter = $emitter;
         $this->keepAliveTTL = $keepAliveTTL;
         $this->myIdentifier = Uuid::uuid4()->toString();
+        $this->myPID = getmypid() ?? 'unknown';
     }
 
     private function isReliableMessageHandlingEnabled(): bool
@@ -46,7 +52,7 @@ trait MessageReliabilityTrait
         return sprintf(
             '[%s][%s][%s]',
             $this->myIdentifier,
-            getmypid() ?: 'unknown',
+            $this->myPID,
             gethostname() ?: 'unknown',
         );
     }
@@ -165,6 +171,8 @@ trait MessageReliabilityTrait
 
                         sleep(1);
                     }
+
+                    exit(0);
                 }
             }
         } else {
