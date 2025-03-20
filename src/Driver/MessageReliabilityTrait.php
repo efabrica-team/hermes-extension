@@ -150,10 +150,12 @@ trait MessageReliabilityTrait
                         }
                         foreach ($items as $field => $value) {
                             $agentKey = $this->getAgentKey($field);
-                            if ($this->redis->exists($agentKey)) {
+                            echo 'AGENT KEY: ' . $agentKey . "\n";
+                            if ($this->redis->get($agentKey) !== null) {
                                 continue;
                             }
                             $status = json_decode($value);
+                            echo 'STATUS: ' . print_r($status, true) . "\n";
                             if (hrtime(true) - $start >= MessageReliabilityInterface::LOCK_TIME_DIFF_MAX) {
                                 return;
                             }
@@ -169,12 +171,14 @@ trait MessageReliabilityTrait
                                     $message->execute_at,
                                     $message->retries,
                                 );
+                                echo 'NEW MESSAGE: ' . print_r($newMessage, true) . "\n";
                                 if (!isset($this->queues[$priority])) {
                                     $priority = Dispatcher::DEFAULT_PRIORITY;
                                 }
                                 for ($retry = 0; $retry <= MessageReliabilityInterface::REQUEUE_REPEATS; $retry++) {
                                     try {
                                         $this->myEmitter->emit($newMessage, $priority);
+                                        echo 'MESSAGE SENT' . "\n";
                                         break;
                                     } catch (Throwable $exception) {
                                         if ($retry === MessageReliabilityInterface::REQUEUE_REPEATS) {
