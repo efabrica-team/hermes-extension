@@ -100,7 +100,7 @@ trait MessageReliabilityTrait
     {
         $this->updateMessageStatus($message, $foundPriority);
         if ($this->isReliableMessageHandlingEnabled() && extension_loaded('pcntl')) {
-            $pipe = sys_get_temp_dir() . '/' . uniqid('hermes_monitor_', true) . '-' . $this->myIdentifier . '.pipe';
+            $pipe = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.pipe';
 
             $signals = false;
             if (!file_exists($pipe) && !posix_mkfifo($pipe, 0600)) {
