@@ -20,13 +20,14 @@ use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 
-final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
+final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface, MessageReliabilityInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
     use SerializerAwareTrait;
     use HeartbeatBehavior;
     use QueueAwareTrait;
+    use MessageReliabilityTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -80,6 +81,8 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
             $messageString = null;
             $foundPriority = null;
 
+            $this->updateMessageStatus();
+
             foreach ($queues as $priority => $name) {
                 if (!$this->shouldProcessNext()) {
                     break 2;
@@ -99,10 +102,28 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     }
                     $this->ping(HermesProcess::STATUS_PROCESSING);
                     $message = $this->serializer->unserialize($messageString);
-                    $callback($message, $foundPriority);
+                    $this->updateMessageStatus($message, $foundPriority);
+                    if ($this->isReliableMessageHandlingEnabled()) {
+                        $function = function () use ($message, $foundPriority) {
+                            $this->updateMessageStatus($message, $foundPriority);
+                        };
+                        try {
+                            register_tick_function($function);
+                            declare(ticks=100) {
+                                $callback($message, $foundPriority);
+                            }
+                        } finally {
+                            unregister_tick_function($function);
+                        }
+                    } else {
+                        $callback($message, $foundPriority);
+                    }
+                    $this->updateMessageStatus();
                     $this->incrementProcessedItems();
                 }
             }
+
+            $this->updateMessageStatus();
 
             if ($this->refreshInterval) {
                 $this->checkShutdown();
