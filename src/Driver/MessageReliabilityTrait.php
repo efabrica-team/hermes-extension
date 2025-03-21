@@ -191,12 +191,18 @@ trait MessageReliabilityTrait
                         echo 'CHILD PROCESS: UPDATING MONITOR' . "\n";
                         $this->updateMessageStatus($message, $foundPriority);
 
-                        echo 'CHILD PROCESS: READING SIGNAL' . "\n";
-                        $p = fopen($pipe, 'r');
-                        $data = fread($p, 1024);
-                        if ($data === 'DONE') {
-                            echo 'CHILD PROCESS: END' . "\n";
-                            break;
+                        $read = [$p];
+                        $write = null;
+                        $except = null;
+
+                        if (stream_select($read, $write, $except, 0) > 0) {
+                            echo 'CHILD PROCESS: READING SIGNAL' . "\n";
+                            $p = fopen($pipe, 'r');
+                            $data = fread($p, 1024);
+                            if ($data === 'DONE') {
+                                echo 'CHILD PROCESS: END' . "\n";
+                                break;
+                            }
                         }
 
                         echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
