@@ -7,6 +7,7 @@ namespace Efabrica\HermesExtension\Driver;
 use Closure;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
+use RuntimeException;
 use Throwable;
 use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\EmitterInterface;
@@ -139,50 +140,38 @@ trait MessageReliabilityTrait
                 if ($pid === -1) {
                     // ERROR
                     $this->updateMessageStatus($message, $foundPriority);
-                    throw new \RuntimeException('Unable to fork');
+                    throw new RuntimeException('Unable to fork');
                 } elseif ($pid) {
                     // MAIN PROCESS
                     try {
-                        echo 'PARENT PROCESS: CALLBACK START' . "\n";
                         $this->updateMessageStatus($message, $foundPriority);
                         $callback($message, $foundPriority);
-                        echo 'PARENT PROCESS: CALLBACK END' . "\n";
                     } finally {
-                        echo 'PARENT PROCESS: SIGNALING END' . "\n";
                         file_put_contents($flagFile, 'DONE');
 
-                        echo 'PARENT PROCESS: WAITING FOR CHILD TO STOP' . "\n";
                         pcntl_waitpid($pid, $status);
-                        echo 'PARENT PROCESS: CHILD STOPPED' . "\n";
+                        @unlink($flagFile);
                     }
                 } else {
                     // CHILD PROCESS
                     $parentPid = posix_getppid();
-                    echo 'CHILD PROCESS: PARENT PID: ' . $parentPid . "\n";
 
                     while (true) {
                         if (posix_getpgid($parentPid) === false) {
-                            echo 'CHILD PROCESS: PARENT PROCESS IS KILLED' . "\n";
                             exit(0); // Parent process is killed, so this ends too ...
                         }
 
-                        echo 'CHILD PROCESS: UPDATING MONITOR' . "\n";
                         $this->updateMessageStatus($message, $foundPriority);
 
-                        echo 'CHILD PROCESS: LOOKING FOR END FLAG' . "\n";
                         if (file_exists($flagFile)) {
                             $content = file_get_contents($flagFile);
                             if ($content === 'DONE') {
-                                echo 'CHILD PROCESS: END SIGNAL RECEIVED' . "\n";
                                 break;
                             }
                         }
 
-                        echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
                         sleep(1);
                     }
-
-                    echo 'CHILD PROCESS: EXITING PROCESS' . "\n";
 
                     exit(0);
                 }
@@ -222,12 +211,10 @@ trait MessageReliabilityTrait
                         }
                         foreach ($items as $field => $value) {
                             $agentKey = $this->getAgentKey($field);
-                            echo 'AGENT KEY: ' . $agentKey . "\n";
                             if ($this->redis->get($agentKey) !== null) {
                                 continue;
                             }
                             $status = json_decode($value, true);
-                            echo 'STATUS: ' . print_r($status, true) . "\n";
                             if (hrtime(true) - $start >= MessageReliabilityInterface::LOCK_TIME_DIFF_MAX) {
                                 return;
                             }
@@ -243,14 +230,12 @@ trait MessageReliabilityTrait
                                     $message['execute_at'],
                                     $message['retries'],
                                 );
-                                echo 'NEW MESSAGE: ' . print_r($newMessage, true) . "\n";
                                 if (!isset($this->queues[$priority])) {
                                     $priority = Dispatcher::DEFAULT_PRIORITY;
                                 }
                                 for ($retry = 0; $retry <= MessageReliabilityInterface::REQUEUE_REPEATS; $retry++) {
                                     try {
                                         $this->myEmitter->emit($newMessage, $priority);
-                                        echo 'MESSAGE SENT' . "\n";
                                         break;
                                     } catch (Throwable $exception) {
                                         if ($retry === MessageReliabilityInterface::REQUEUE_REPEATS) {
@@ -262,7 +247,6 @@ trait MessageReliabilityTrait
                             }
                         }
                     } catch (Throwable $exception) {
-                        echo 'ERROR: ' . $exception->getMessage() . "\n";
                     }
                 } while (hrtime(true) - $start < MessageReliabilityInterface::LOCK_TIME_DIFF_MAX && $cursor !== 0);
             } finally {
