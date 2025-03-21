@@ -145,7 +145,8 @@ trait MessageReliabilityTrait
                     $p = fopen($pipe, 'w');
 
                     echo 'PARENT PROCESS: SIGNALING START' . "\n";
-                    fwrite($p, 'START');
+                    $bitesWritten = fwrite($p, 'START');
+                    echo 'PARENT PROCESS: WROTE ' . $bitesWritten . ' BYTES' . "\n";
 
                     try {
                         echo 'PARENT PROCESS: CALLBACK START' . "\n";
@@ -168,6 +169,7 @@ trait MessageReliabilityTrait
 
                     echo 'CHILD PROCESS: OPENING PIPE' . "\n";
                     $p = fopen($pipe, 'r');
+                    stream_set_blocking($p, true);
 
                     $data = fread($p, 1024);
                     if ($data !== 'START') {
