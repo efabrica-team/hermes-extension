@@ -146,6 +146,7 @@ trait MessageReliabilityTrait
 
                     echo 'PARENT PROCESS: SIGNALING START' . "\n";
                     $bitesWritten = fwrite($p, 'START');
+                    fflush($p);
                     echo 'PARENT PROCESS: WROTE ' . $bitesWritten . ' BYTES' . "\n";
 
                     try {
