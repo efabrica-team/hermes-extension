@@ -101,6 +101,8 @@ trait MessageReliabilityTrait
         $this->updateMessageStatus($message, $foundPriority);
         if ($this->isReliableMessageHandlingEnabled() && extension_loaded('pcntl')) {
             $pipe = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.pipe';
+            $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
+            @unlink($flagFile);
 
             $signals = false;
             if (!file_exists($pipe) && !posix_mkfifo($pipe, 0600)) {
@@ -157,9 +159,10 @@ trait MessageReliabilityTrait
                         echo 'PARENT PROCESS: CALLBACK END' . "\n";
                     } finally {
                         echo 'PARENT PROCESS: SIGNALING END' . "\n";
-                        $p = fopen($pipe, 'w');
+                        file_put_contents($flagFile, 'DONE');
+                        /*$p = fopen($pipe, 'w');
                         fwrite($p, 'DONE');
-                        fclose($p);
+                        fclose($p);*/
 
                         echo 'PARENT PROCESS: WAITING FOR CHILD TO STOP' . "\n";
                         pcntl_waitpid($pid, $status);
@@ -176,13 +179,12 @@ trait MessageReliabilityTrait
                     stream_set_blocking($p, true);
 
                     $data = fread($p, 1024);
+                    fclose($p);
                     if ($data !== 'START') {
                         echo 'CHILD PROCESS: START SIGNAL NOT RECEIVED, GOT: "' . $data . '"' . "\n";
                         exit(1);
                     }
                     echo 'CHILD PROCESS: START SIGNAL RECEIVED' . "\n";
-
-                    stream_set_blocking($p, false);
 
                     while (true) {
                         if (posix_getpgid($parentPid) === false) {
@@ -193,20 +195,21 @@ trait MessageReliabilityTrait
                         echo 'CHILD PROCESS: UPDATING MONITOR' . "\n";
                         $this->updateMessageStatus($message, $foundPriority);
 
-                        $read = [$p];
-                        $write = null;
-                        $except = null;
-
-                        if (stream_select($read, $write, $except, 0) > 0) {
-                            echo 'CHILD PROCESS: READING SIGNAL' . "\n";
-                            $p = fopen($pipe, 'r');
-                            $data = fread($p, 1024);
-                            echo 'CHILD PROCESS: READ DATA: "' . $data . '"' . "\n";
-                            if ($data === 'DONE') {
-                                echo 'CHILD PROCESS: END' . "\n";
+                        echo 'CHILD PROCESS: READING SIGNAL' . "\n";
+                        if (file_exists($flagFile)) {
+                            $content = file_get_contents($flagFile);
+                            if ($content === 'DONE') {
+                                echo 'CHILD PROCESS: END SIGNAL RECEIVED' . "\n";
                                 break;
                             }
                         }
+                        /*$p = fopen($pipe, 'r');
+                        $data = fread($p, 1024);
+                        echo 'CHILD PROCESS: READ DATA: "' . $data . '"' . "\n";
+                        if ($data === 'DONE') {
+                            echo 'CHILD PROCESS: END' . "\n";
+                            break;
+                        }*/
 
                         echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
                         sleep(1);
