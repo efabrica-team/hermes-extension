@@ -146,7 +146,7 @@ trait MessageReliabilityTrait
 
                     echo 'PARENT PROCESS: SIGNALING START' . "\n";
                     $bitesWritten = fwrite($p, 'START');
-                    fflush($p);
+                    fclose($p);
                     echo 'PARENT PROCESS: WROTE ' . $bitesWritten . ' BYTES' . "\n";
 
                     try {
@@ -155,6 +155,7 @@ trait MessageReliabilityTrait
                         echo 'PARENT PROCESS: CALLBACK END' . "\n";
                     } finally {
                         echo 'PARENT PROCESS: SIGNALING END' . "\n";
+                        $p = fopen($pipe, 'w');
                         fwrite($p, 'DONE');
                         fclose($p);
 
@@ -174,12 +175,13 @@ trait MessageReliabilityTrait
 
                     $data = fread($p, 1024);
                     if ($data !== 'START') {
+                        fclose($p);
                         echo 'CHILD PROCESS: START SIGNAL NOT RECEIVED, GOT: "' . $data . '"' . "\n";
                         exit(1);
                     }
+                    fclose($p);
                     echo 'CHILD PROCESS: START SIGNAL RECEIVED' . "\n";
 
-                    stream_set_blocking($p, false);
 
                     while (true) {
                         if (posix_getpgid($parentPid) === false) {
@@ -191,11 +193,15 @@ trait MessageReliabilityTrait
                         $this->updateMessageStatus($message, $foundPriority);
 
                         echo 'CHILD PROCESS: READING SIGNAL' . "\n";
+                        $p = fopen($pipe, 'r');
+                        stream_set_blocking($p, false);
                         $data = fread($p, 1024);
                         if ($data === 'DONE') {
+                            fclose($p);
                             echo 'CHILD PROCESS: END' . "\n";
                             break;
                         }
+                        fclose($p);
 
                         echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
                         sleep(1);
