@@ -100,13 +100,12 @@ trait MessageReliabilityTrait
     {
         $this->updateMessageStatus($message, $foundPriority);
         if ($this->isReliableMessageHandlingEnabled() && extension_loaded('pcntl')) {
-            $pipe = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.pipe';
             $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
             @unlink($flagFile);
 
-            $signals = false;
-            if (!file_exists($pipe) && !posix_mkfifo($pipe, 0600)) {
-                $signals = true;
+            $signals = true;
+            if (function_exists('pcntl_fork')) {
+                $signals = false;
             }
 
             if ($signals) {
@@ -140,18 +139,9 @@ trait MessageReliabilityTrait
                 if ($pid === -1) {
                     // ERROR
                     $this->updateMessageStatus($message, $foundPriority);
-                    @unlink($pipe);
                     throw new \RuntimeException('Unable to fork');
                 } elseif ($pid) {
                     // MAIN PROCESS
-                    echo 'PARENT PROCESS: OPENING PIPE' . "\n";
-                    $p = fopen($pipe, 'w');
-
-                    echo 'PARENT PROCESS: SIGNALING START' . "\n";
-                    $bitesWritten = fwrite($p, 'START');
-                    fclose($p);
-                    echo 'PARENT PROCESS: WROTE ' . $bitesWritten . ' BYTES' . "\n";
-
                     try {
                         echo 'PARENT PROCESS: CALLBACK START' . "\n";
                         $this->updateMessageStatus($message, $foundPriority);
@@ -160,31 +150,15 @@ trait MessageReliabilityTrait
                     } finally {
                         echo 'PARENT PROCESS: SIGNALING END' . "\n";
                         file_put_contents($flagFile, 'DONE');
-                        /*$p = fopen($pipe, 'w');
-                        fwrite($p, 'DONE');
-                        fclose($p);*/
 
                         echo 'PARENT PROCESS: WAITING FOR CHILD TO STOP' . "\n";
                         pcntl_waitpid($pid, $status);
-                        @unlink($pipe);
                         echo 'PARENT PROCESS: CHILD STOPPED' . "\n";
                     }
                 } else {
                     // CHILD PROCESS
                     $parentPid = posix_getppid();
                     echo 'CHILD PROCESS: PARENT PID: ' . $parentPid . "\n";
-
-                    echo 'CHILD PROCESS: OPENING PIPE' . "\n";
-                    $p = fopen($pipe, 'r');
-                    stream_set_blocking($p, true);
-
-                    $data = fread($p, 1024);
-                    fclose($p);
-                    if ($data !== 'START') {
-                        echo 'CHILD PROCESS: START SIGNAL NOT RECEIVED, GOT: "' . $data . '"' . "\n";
-                        exit(1);
-                    }
-                    echo 'CHILD PROCESS: START SIGNAL RECEIVED' . "\n";
 
                     while (true) {
                         if (posix_getpgid($parentPid) === false) {
@@ -195,7 +169,7 @@ trait MessageReliabilityTrait
                         echo 'CHILD PROCESS: UPDATING MONITOR' . "\n";
                         $this->updateMessageStatus($message, $foundPriority);
 
-                        echo 'CHILD PROCESS: READING SIGNAL' . "\n";
+                        echo 'CHILD PROCESS: LOOKING FOR END FLAG' . "\n";
                         if (file_exists($flagFile)) {
                             $content = file_get_contents($flagFile);
                             if ($content === 'DONE') {
@@ -203,19 +177,10 @@ trait MessageReliabilityTrait
                                 break;
                             }
                         }
-                        /*$p = fopen($pipe, 'r');
-                        $data = fread($p, 1024);
-                        echo 'CHILD PROCESS: READ DATA: "' . $data . '"' . "\n";
-                        if ($data === 'DONE') {
-                            echo 'CHILD PROCESS: END' . "\n";
-                            break;
-                        }*/
 
                         echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
                         sleep(1);
                     }
-
-                    fclose($p);
 
                     echo 'CHILD PROCESS: EXITING PROCESS' . "\n";
 
