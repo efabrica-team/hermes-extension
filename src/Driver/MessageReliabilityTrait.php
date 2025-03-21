@@ -201,6 +201,7 @@ trait MessageReliabilityTrait
                             echo 'CHILD PROCESS: READING SIGNAL' . "\n";
                             $p = fopen($pipe, 'r');
                             $data = fread($p, 1024);
+                            echo 'CHILD PROCESS: READ DATA: "' . $data . '"' . "\n";
                             if ($data === 'DONE') {
                                 echo 'CHILD PROCESS: END' . "\n";
                                 break;
