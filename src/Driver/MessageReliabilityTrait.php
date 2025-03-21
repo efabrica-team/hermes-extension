@@ -173,9 +173,10 @@ trait MessageReliabilityTrait
 
                     $data = fread($p, 1024);
                     if ($data !== 'START') {
-                        echo 'CHILD PROCESS: START SIGNAL NOT RECEIVED' . "\n";
+                        echo 'CHILD PROCESS: START SIGNAL NOT RECEIVED, GOT: "' . $data . '"' . "\n";
                         exit(1);
                     }
+                    echo 'CHILD PROCESS: START SIGNAL RECEIVED' . "\n";
 
                     stream_set_blocking($p, false);
 
