@@ -135,23 +135,36 @@ trait MessageReliabilityTrait
                 $pid = pcntl_fork();
 
                 if ($pid === -1) {
+                    // ERROR
+                    $this->updateMessageStatus($message, $foundPriority);
                     @unlink($pipe);
+                    throw new \RuntimeException('Unable to fork');
                 } elseif ($pid) {
+                    // MAIN PROCESS
                     try {
+                        echo 'PARENT PROCESS: CALLBACK START' . "\n";
                         $callback($message, $foundPriority);
+                        echo 'PARENT PROCESS: CALLBACK END' . "\n";
                     } finally {
+                        echo 'PARENT PROCESS: OPENING PIPE' . "\n";
                         do {
                             $p = fopen($pipe, 'w');
                         } while ($p === false);
+                        echo 'PARENT PROCESS: SIGNALING END' . "\n";
                         fwrite($p, 'DONE');
                         fclose($p);
 
+                        echo 'PARENT PROCESS: WAITING FOR CHILD TO STOP' . "\n";
                         pcntl_waitpid($pid, $status);
                         @unlink($pipe);
+                        echo 'PARENT PROCESS: CHILD STOPPED' . "\n";
                     }
                 } else {
+                    // CHILD PROCESS
                     $parentPid = posix_getppid();
+                    echo 'CHILD PROCESS: PARENT PID: ' . $parentPid . "\n";
 
+                    echo 'CHILD PROCESS: OPENING PIPE' . "\n";
                     do {
                         $p = fopen($pipe, 'r');
                     } while ($p === false);
@@ -159,18 +172,25 @@ trait MessageReliabilityTrait
 
                     while (true) {
                         if (posix_getpgid($parentPid) === false) {
+                            echo 'CHILD PROCESS: PARENT PROCESS IS KILLED' . "\n";
                             exit(0); // Parent process is killed, so this ends too ...
                         }
 
-                        $this->updateMessageStatus($message, $foundPriority);
-
+                        echo 'CHILD PROCESS: READING SIGNAL' . "\n";
                         $data = fread($p, 1024);
                         if ($data === 'DONE') {
+                            echo 'CHILD PROCESS: END' . "\n";
                             break;
                         }
 
+                        echo 'CHILD PROCESS: UPDATING MONITOR' . "\n";
+                        $this->updateMessageStatus($message, $foundPriority);
+
+                        echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
                         sleep(1);
                     }
+
+                    echo 'CHILD PROCESS: EXITING PROCESS' . "\n";
 
                     exit(0);
                 }
