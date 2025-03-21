@@ -174,12 +174,11 @@ trait MessageReliabilityTrait
                     stream_set_blocking($p, true);
 
                     $data = fread($p, 1024);
+                    fclose($p);
                     if ($data !== 'START') {
-                        fclose($p);
                         echo 'CHILD PROCESS: START SIGNAL NOT RECEIVED, GOT: "' . $data . '"' . "\n";
                         exit(1);
                     }
-                    fclose($p);
                     echo 'CHILD PROCESS: START SIGNAL RECEIVED' . "\n";
 
 
@@ -193,15 +192,18 @@ trait MessageReliabilityTrait
                         $this->updateMessageStatus($message, $foundPriority);
 
                         echo 'CHILD PROCESS: READING SIGNAL' . "\n";
-                        $p = fopen($pipe, 'r');
-                        stream_set_blocking($p, false);
-                        $data = fread($p, 1024);
-                        if ($data === 'DONE') {
+                        if (file_exists($pipe)) {
+                            $p = fopen($pipe, 'r');
+                            stream_set_blocking($p, false);
+                            $data = fread($p, 1024);
                             fclose($p);
-                            echo 'CHILD PROCESS: END' . "\n";
-                            break;
+                            if ($data === 'DONE') {
+                                echo 'CHILD PROCESS: END' . "\n";
+                                break;
+                            }
+                        } else {
+                            echo 'CHILD PROCESS: PIPE IS NOT READABLE NOW' . "\n";
                         }
-                        fclose($p);
 
                         echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
                         sleep(1);
