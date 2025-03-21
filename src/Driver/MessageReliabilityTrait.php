@@ -119,6 +119,7 @@ trait MessageReliabilityTrait
                 });
                 try {
                     pcntl_alarm(1);
+                    $this->updateMessageStatus($message, $foundPriority);
                     $callback($message, $foundPriority);
                 } finally {
                     pcntl_alarm(0);
@@ -151,6 +152,7 @@ trait MessageReliabilityTrait
 
                     try {
                         echo 'PARENT PROCESS: CALLBACK START' . "\n";
+                        $this->updateMessageStatus($message, $foundPriority);
                         $callback($message, $foundPriority);
                         echo 'PARENT PROCESS: CALLBACK END' . "\n";
                     } finally {
