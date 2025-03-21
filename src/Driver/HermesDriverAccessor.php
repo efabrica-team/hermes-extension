@@ -79,7 +79,7 @@ final class HermesDriverAccessor
     private function checkWriteAccess(): void
     {
         $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
-        $callerClass = $trace[2]['class'] ?? '';
+        $callerClass = $trace[1]['class'] ?? '';
 
         if ($callerClass === '' || !is_a($callerClass, DriverInterface::class, true)) {
             throw new LogicException(sprintf(
