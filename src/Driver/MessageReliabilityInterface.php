@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Driver;
 
 use Tomaj\Hermes\EmitterInterface;
+use Tomaj\Hermes\MessageInterface;
 
 interface MessageReliabilityInterface
 {
@@ -14,4 +15,6 @@ interface MessageReliabilityInterface
     const REQUEUE_REPEATS = 3;
 
     public function enableReliableMessageHandling(string $storagePrefix, EmitterInterface $emitter, int $keepAliveTTL): void;
+
+    public function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void;
 }

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
+use LogicException;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use RuntimeException;
 use Throwable;
 use Tomaj\Hermes\Dispatcher;
+use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\EmitterInterface;
 use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
@@ -40,7 +42,7 @@ trait MessageReliabilityTrait
         $this->myEmitter = $emitter;
         $this->keepAliveTTL = $keepAliveTTL;
         $this->myIdentifier = Uuid::uuid4()->toString();
-        $this->myPID = getmypid() ?? 'unknown';
+        $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
     }
 
     private function isReliableMessageHandlingEnabled(): bool
@@ -63,8 +65,10 @@ trait MessageReliabilityTrait
         return $this->currentMessageStoragePrefix . ':agent' . $key;
     }
 
-    private function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void
+    public function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void
     {
+        $this->checkWriteAccess();
+
         if (!$this->isReliableMessageHandlingEnabled()) {
             return;
         }
@@ -255,6 +259,23 @@ trait MessageReliabilityTrait
                 } catch (Throwable $exception) {
                 }
             }
+        }
+    }
+
+    private function checkWriteAccess(): void
+    {
+        $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
+        $callerClass = $trace[2]['class'] ?? '';
+
+        $isDriver = $callerClass !== '' && is_a($callerClass, DriverInterface::class, true);
+        $isAccessor = $callerClass === HermesDriverAccessor::class;
+
+        if (!$isDriver && !$isAccessor) {
+            throw new LogicException(sprintf(
+                'Method updateMessageStatus can only be called from classes implementing "%s" or from "%s".',
+                DriverInterface::class,
+                HermesDriverAccessor::class
+            ));
         }
     }
 }

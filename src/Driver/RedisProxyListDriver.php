@@ -69,6 +69,8 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
+        $accessor = HermesDriverAccessor::getInstance();
+        $accessor->setDriver($this);
         $queues = $this->queues;
         krsort($queues);
         while (true) {
@@ -104,7 +106,12 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     }
                     $this->ping(HermesProcess::STATUS_PROCESSING);
                     $message = $this->serializer->unserialize($messageString);
-                    $this->monitorCallback($callback, $message, $foundPriority);
+                    $accessor->setMessageInfo($message, $foundPriority);
+                    try {
+                        $this->monitorCallback($callback, $message, $foundPriority);
+                    } finally {
+                        $accessor->clearMessageInfo();
+                    }
                     $this->incrementProcessedItems();
                 }
             }
