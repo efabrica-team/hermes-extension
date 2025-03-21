@@ -141,15 +141,17 @@ trait MessageReliabilityTrait
                     throw new \RuntimeException('Unable to fork');
                 } elseif ($pid) {
                     // MAIN PROCESS
+                    echo 'PARENT PROCESS: OPENING PIPE' . "\n";
+                    $p = fopen($pipe, 'w');
+
+                    echo 'PARENT PROCESS: SIGNALING START' . "\n";
+                    fwrite($p, 'START');
+
                     try {
                         echo 'PARENT PROCESS: CALLBACK START' . "\n";
                         $callback($message, $foundPriority);
                         echo 'PARENT PROCESS: CALLBACK END' . "\n";
                     } finally {
-                        echo 'PARENT PROCESS: OPENING PIPE' . "\n";
-                        do {
-                            $p = fopen($pipe, 'w');
-                        } while ($p === false);
                         echo 'PARENT PROCESS: SIGNALING END' . "\n";
                         fwrite($p, 'DONE');
                         fclose($p);
@@ -165,9 +167,14 @@ trait MessageReliabilityTrait
                     echo 'CHILD PROCESS: PARENT PID: ' . $parentPid . "\n";
 
                     echo 'CHILD PROCESS: OPENING PIPE' . "\n";
-                    do {
-                        $p = fopen($pipe, 'r');
-                    } while ($p === false);
+                    $p = fopen($pipe, 'r');
+
+                    $data = fread($p, 1024);
+                    if ($data !== 'START') {
+                        echo 'CHILD PROCESS: START SIGNAL NOT RECEIVED' . "\n";
+                        exit(1);
+                    }
+
                     stream_set_blocking($p, false);
 
                     while (true) {
@@ -176,15 +183,15 @@ trait MessageReliabilityTrait
                             exit(0); // Parent process is killed, so this ends too ...
                         }
 
+                        echo 'CHILD PROCESS: UPDATING MONITOR' . "\n";
+                        $this->updateMessageStatus($message, $foundPriority);
+
                         echo 'CHILD PROCESS: READING SIGNAL' . "\n";
                         $data = fread($p, 1024);
                         if ($data === 'DONE') {
                             echo 'CHILD PROCESS: END' . "\n";
                             break;
                         }
-
-                        echo 'CHILD PROCESS: UPDATING MONITOR' . "\n";
-                        $this->updateMessageStatus($message, $foundPriority);
 
                         echo 'CHILD PROCESS: GOING TO THE NEXT CYCLE' . "\n";
                         sleep(1);
