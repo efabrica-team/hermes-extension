@@ -267,10 +267,7 @@ trait MessageReliabilityTrait
         $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
         $callerClass = $trace[1]['class'] ?? '';
 
-        $isDriver = $callerClass !== '' && is_a($callerClass, DriverInterface::class, true);
-        $isAccessor = $callerClass === HermesDriverAccessor::class;
-
-        if (!$isDriver && !$isAccessor) {
+        if ($callerClass === '' || !is_a($callerClass, DriverInterface::class, true)) {
             throw new LogicException(sprintf(
                 'Method updateMessageStatus can only be called from classes implementing "%s" or from "%s".',
                 DriverInterface::class,
