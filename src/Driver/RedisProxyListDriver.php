@@ -45,6 +45,11 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
         $this->serializer = new MessageSerializer();
     }
 
+    public function __destruct()
+    {
+        $this->removeMessageStatus();
+    }
+
     /**
      * @throws RedisProxyException
      * @throws SerializeException

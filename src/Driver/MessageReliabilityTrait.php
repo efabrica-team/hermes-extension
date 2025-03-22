@@ -101,6 +101,33 @@ trait MessageReliabilityTrait
         }
     }
 
+    private function removeMessageStatus(): void
+    {
+        try {
+            if (!$this->isReliableMessageHandlingEnabled()) {
+                return;
+            }
+
+            $key = $this->getMyKey();
+            $agentKey = $this->getAgentKey($key);
+
+            $data = $this->redis->hget($this->currentMessageStoragePrefix, $key);
+
+            if ($data !== null) {
+                $data = json_decode($data, true);
+                if (isset($data['message'])) {
+                    // We will left unprocessed message in monitor
+                    return;
+                }
+            }
+
+            $this->redis->hdel($this->currentMessageStoragePrefix, $key);
+            $this->redis->del($agentKey);
+        } catch (Throwable $exception) {
+            // Just stop all exceptions
+        }
+    }
+
     private function monitorCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
     {
         $this->updateMessageStatus($message, $foundPriority);
