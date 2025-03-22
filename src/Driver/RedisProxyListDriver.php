@@ -100,7 +100,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     if (!$this->shouldProcessNext()) {
                         break 3;
                     }
-                    $this->incrementProcessedItems();
+                    $this->updateMessageStatus();
                     $messageString = $this->pop($key);
                     if ($messageString === null) {
                         break;
