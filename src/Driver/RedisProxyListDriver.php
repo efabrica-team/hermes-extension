@@ -131,6 +131,8 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                 usleep(intval($this->refreshInterval * 1000000));
             }
         }
+        $this->updateMessageStatus();
+        $accessor->clearMessageInfo();
     }
 
     /**
