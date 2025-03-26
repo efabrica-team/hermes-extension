@@ -76,6 +76,15 @@ final class HermesDriverAccessor
         $this->driver->updateMessageStatus($this->message, $this->priority);
     }
 
+    public function setProcessingStatus(?string $status = null): void
+    {
+        if (!$this->driver instanceof MessageReliabilityInterface) {
+            return;
+        }
+
+        $this->driver->updateMessageProcessingStatus($status);
+    }
+
     private function checkWriteAccess(): void
     {
         $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3);

@@ -17,4 +17,6 @@ interface MessageReliabilityInterface
     public function enableReliableMessageHandling(string $storagePrefix, EmitterInterface $emitter, int $keepAliveTTL): void;
 
     public function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void;
+
+    public function updateMessageProcessingStatus(?string $status = null): void;
 }

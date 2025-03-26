@@ -65,6 +65,11 @@ trait MessageReliabilityTrait
         return $this->currentMessageStoragePrefix . ':agent' . $key;
     }
 
+    private function getStatusKey(string $key): string
+    {
+        return $this->currentMessageStoragePrefix . ':status' . $key;
+    }
+
     public function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void
     {
         $this->checkWriteAccess();
@@ -98,6 +103,30 @@ trait MessageReliabilityTrait
                 $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
             }
         } catch (Throwable $exception) {
+        }
+    }
+
+    public function updateMessageProcessingStatus(?string $status = null): void
+    {
+        $this->checkWriteAccess();
+
+        if (!$this->isReliableMessageHandlingEnabled()) {
+            return;
+        }
+
+        $key = $this->getMyKey();
+        $statusKey = $this->getStatusKey($key);
+
+        if ($status === null) {
+            try {
+                $this->redis->del($key);
+            } catch (Throwable $exception) {
+            }
+        } else {
+            try {
+                $this->redis->set($key, $status);
+            } catch (Throwable $exception) {
+            }
         }
     }
 
@@ -242,6 +271,7 @@ trait MessageReliabilityTrait
                         }
                         foreach ($items as $field => $value) {
                             $agentKey = $this->getAgentKey($field);
+                            $statusKey = $this->getStatusKey($field);
                             if ($this->redis->get($agentKey) !== null) {
                                 continue;
                             }
@@ -250,6 +280,7 @@ trait MessageReliabilityTrait
                                 return;
                             }
                             $this->redis->hdel($this->currentMessageStoragePrefix, $field);
+                            $this->redis->del($statusKey);
                             if (isset($status['message'])) {
                                 $message = $status['message'];
                                 $priority = $status['priority'] ?? Dispatcher::DEFAULT_PRIORITY;
