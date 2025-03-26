@@ -92,7 +92,7 @@ final class HermesDriverAccessor
             return;
         }
 
-        $this->driver->updateMessageProcessingStatus($status);
+        $this->driver->updateMessageProcessingStatus($status, $percent);
     }
 
     private function checkWriteAccess(): void
