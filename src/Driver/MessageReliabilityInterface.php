@@ -18,5 +18,5 @@ interface MessageReliabilityInterface
 
     public function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void;
 
-    public function updateMessageProcessingStatus(?string $status = null): void;
+    public function updateMessageProcessingStatus(?string $status = null, ?float $percent = null): void;
 }

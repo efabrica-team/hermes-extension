@@ -76,7 +76,13 @@ final class HermesDriverAccessor
         $this->driver->updateMessageStatus($this->message, $this->priority);
     }
 
-    public function setProcessingStatus(?string $status = null): void
+    /**
+     * Writes status of processed message to the driver data.
+     *
+     * @param string|null $status status message, `null` will delete status.
+     * @param float|null $percent percentage of task completeness between `0` and `100`, `null` disables completion tracking.
+     */
+    public function setProcessingStatus(?string $status = null, ?float $percent = null): void
     {
         if (!$this->driver instanceof MessageReliabilityInterface) {
             return;

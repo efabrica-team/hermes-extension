@@ -106,7 +106,7 @@ trait MessageReliabilityTrait
         }
     }
 
-    public function updateMessageProcessingStatus(?string $status = null): void
+    public function updateMessageProcessingStatus(?string $status = null, ?float $percent = null): void
     {
         $this->checkWriteAccess();
 
@@ -124,7 +124,11 @@ trait MessageReliabilityTrait
             }
         } else {
             try {
-                $this->redis->set($statusKey, $status);
+                $body = json_encode([
+                    'status' => $status,
+                    'percent' => $percent === null ? null : max(min($percent, 100.0), 0.0),
+                ]);
+                $this->redis->set($statusKey, $body);
             } catch (Throwable $exception) {
             }
         }
