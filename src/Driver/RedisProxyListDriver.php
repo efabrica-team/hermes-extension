@@ -108,9 +108,11 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     $this->ping(HermesProcess::STATUS_PROCESSING);
                     $message = $this->serializer->unserialize($messageString);
                     $accessor->setMessageInfo($message, $foundPriority);
+                    $accessor->setProcessingStatus();
                     try {
                         $this->monitorCallback($callback, $message, $foundPriority);
                     } finally {
+                        $accessor->setProcessingStatus();
                         $accessor->clearMessageInfo();
                     }
                     $this->incrementProcessedItems();
