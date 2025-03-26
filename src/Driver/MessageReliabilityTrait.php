@@ -139,19 +139,21 @@ trait MessageReliabilityTrait
 
             $key = $this->getMyKey();
             $agentKey = $this->getAgentKey($key);
+            $statusKey = $this->getStatusKey($key);
 
             $data = $this->redis->hget($this->currentMessageStoragePrefix, $key);
 
             if ($data !== null) {
                 $data = json_decode($data, true);
                 if (isset($data['message'])) {
-                    // We will left unprocessed message in monitor
+                    // We leave unprocessed message in monitor
                     return;
                 }
             }
 
             $this->redis->hdel($this->currentMessageStoragePrefix, $key);
             $this->redis->del($agentKey);
+            $this->redis->del($statusKey);
         } catch (Throwable $exception) {
             // Just stop all exceptions
         }
