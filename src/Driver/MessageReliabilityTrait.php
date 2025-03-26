@@ -119,12 +119,12 @@ trait MessageReliabilityTrait
 
         if ($status === null) {
             try {
-                $this->redis->del($key);
+                $this->redis->del($statusKey);
             } catch (Throwable $exception) {
             }
         } else {
             try {
-                $this->redis->set($key, $status);
+                $this->redis->set($statusKey, $status);
             } catch (Throwable $exception) {
             }
         }
