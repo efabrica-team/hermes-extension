@@ -114,6 +114,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                         $accessor->clearMessageInfo();
                     }
                     $this->incrementProcessedItems();
+                    $this->recoverMessages();
                 }
             }
 
