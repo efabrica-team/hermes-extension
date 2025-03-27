@@ -73,64 +73,67 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
         $accessor->setDriver($this);
         $queues = $this->queues;
         krsort($queues);
-        while (true) {
-            $this->checkShutdown();
-            $this->checkToBeKilled();
-            if (!$this->shouldProcessNext()) {
-                break;
-            }
-
-            $this->recoverMessages();
-
-            $messageString = null;
-            $foundPriority = null;
-
-            $this->updateMessageStatus();
-
-            foreach ($queues as $priority => $name) {
-                if (!$this->shouldProcessNext()) {
-                    break 2;
-                }
-                if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
-                    continue;
-                }
-                $key = $this->getKey($priority);
-                $foundPriority = $priority;
-                while (true) {
-                    if (!$this->shouldProcessNext()) {
-                        break 3;
-                    }
-                    $this->updateMessageStatus();
-                    $messageString = $this->pop($key);
-                    if ($messageString === null) {
-                        break;
-                    }
-                    $this->ping(HermesProcess::STATUS_PROCESSING);
-                    $message = $this->serializer->unserialize($messageString);
-                    $accessor->setMessageInfo($message, $foundPriority);
-                    $accessor->setProcessingStatus();
-                    try {
-                        $this->monitorCallback($callback, $message, $foundPriority);
-                    } finally {
-                        $accessor->setProcessingStatus();
-                        $accessor->clearMessageInfo();
-                    }
-                    $this->incrementProcessedItems();
-                    $this->recoverMessages();
-                }
-            }
-
-            $this->updateMessageStatus();
-
-            if ($this->refreshInterval) {
+        try {
+            while (true) {
                 $this->checkShutdown();
                 $this->checkToBeKilled();
-                $this->ping(HermesProcess::STATUS_IDLE);
-                usleep(intval($this->refreshInterval * 1000000));
+                if (!$this->shouldProcessNext()) {
+                    break;
+                }
+
+                $this->recoverMessages();
+
+                $messageString = null;
+                $foundPriority = null;
+
+                $this->updateMessageStatus();
+
+                foreach ($queues as $priority => $name) {
+                    if (!$this->shouldProcessNext()) {
+                        break 2;
+                    }
+                    if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
+                        continue;
+                    }
+                    $key = $this->getKey($priority);
+                    $foundPriority = $priority;
+                    while (true) {
+                        if (!$this->shouldProcessNext()) {
+                            break 3;
+                        }
+                        $this->updateMessageStatus();
+                        $messageString = $this->pop($key);
+                        if ($messageString === null) {
+                            break;
+                        }
+                        $this->ping(HermesProcess::STATUS_PROCESSING);
+                        $message = $this->serializer->unserialize($messageString);
+                        $accessor->setMessageInfo($message, $foundPriority);
+                        $accessor->setProcessingStatus();
+                        try {
+                            $this->monitorCallback($callback, $message, $foundPriority);
+                        } finally {
+                            $accessor->setProcessingStatus();
+                            $accessor->clearMessageInfo();
+                        }
+                        $this->incrementProcessedItems();
+                        $this->recoverMessages();
+                    }
+                }
+
+                $this->updateMessageStatus();
+
+                if ($this->refreshInterval) {
+                    $this->checkShutdown();
+                    $this->checkToBeKilled();
+                    $this->ping(HermesProcess::STATUS_IDLE);
+                    usleep(intval($this->refreshInterval * 1000000));
+                }
             }
+        } finally {
+            $this->removeMessageStatus();
+            $accessor->clearMessageInfo();
         }
-        $this->removeMessageStatus();
-        $accessor->clearMessageInfo();
     }
 
     /**
