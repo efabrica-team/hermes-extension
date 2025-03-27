@@ -123,6 +123,9 @@ trait MessageReliabilityTrait
             } catch (Throwable $exception) {
             }
         } else {
+            if ($percent !== null) {
+                $percent = round($percent, 2);
+            }
             try {
                 $body = json_encode([
                     'status' => $status,
