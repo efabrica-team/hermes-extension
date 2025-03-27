@@ -130,6 +130,7 @@ trait MessageReliabilityTrait
                 $body = json_encode([
                     'status' => $status,
                     'percent' => $percent === null ? null : max(min($percent, 100.0), 0.0),
+                    'timestamp' => microtime(true),
                 ]);
                 $this->redis->set($statusKey, $body);
             } catch (Throwable $exception) {

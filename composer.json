@@ -9,7 +9,8 @@
         "tomaj/hermes": "^4.0",
         "lulco/redis-proxy": "~0.5 | ^1.0",
         "symfony/console": "^5.4 | ^6.0 | ^7.0",
-        "ext-posix": "*"
+        "ext-posix": "*",
+        "ext-pcntl": "*"
     },
     "autoload": {
         "psr-4": {
