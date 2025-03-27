@@ -121,8 +121,11 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                                     pcntl_waitpid($pid, $status);
                                 } else {
                                     // CHILD PROCESS
-                                    $this->monitorCallback($callback, $message, $foundPriority);
-                                    exit(0);
+                                    try {
+                                        $this->monitorCallback($callback, $message, $foundPriority);
+                                    } finally {
+                                        exit(0);
+                                    }
                                 }
                             } else {
                                 $this->monitorCallback($callback, $message, $foundPriority);
