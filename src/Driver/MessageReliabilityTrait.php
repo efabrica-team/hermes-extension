@@ -205,16 +205,16 @@ trait MessageReliabilityTrait
                     pcntl_async_signals($async);
                 }
             } else {
+                $this->updateMessageStatus($message, $foundPriority);
                 $pid = pcntl_fork();
 
                 if ($pid === -1) {
                     // ERROR
-                    $this->updateMessageStatus($message, $foundPriority);
                     throw new RuntimeException('Unable to fork');
                 } elseif ($pid) {
                     // MAIN PROCESS
                     try {
-                        $this->updateMessageStatus($message, $foundPriority);
+                        $this->redis->resetConnectionPool();
                         $callback($message, $foundPriority);
                     } finally {
                         file_put_contents($flagFile, 'DONE');
@@ -225,6 +225,7 @@ trait MessageReliabilityTrait
                 } else {
                     // CHILD PROCESS
                     $parentPid = posix_getppid();
+                    $this->redis->resetConnectionPool();
 
                     while (true) {
                         if (posix_getpgid($parentPid) === false) {
