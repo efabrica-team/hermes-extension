@@ -8,7 +8,6 @@ use Closure;
 use LogicException;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
-use RuntimeException;
 use Throwable;
 use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\Driver\DriverInterface;
@@ -33,6 +32,9 @@ trait MessageReliabilityTrait
      */
     private $myPID = 0;
 
+    /**
+     * Enables or disables (default) reliable messaging.
+     */
     public function enableReliableMessageHandling(
         string $storagePrefix,
         EmitterInterface $emitter,
@@ -45,36 +47,43 @@ trait MessageReliabilityTrait
         $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
     }
 
-    private function isReliableMessageHandlingEnabled(): bool
+    /**
+     * Calls the message processing callback in monitored mode if the reliable messaging is enabled,
+     * will fall back to the non-monitored mode otherwise.
+     */
+    private function monitorCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
     {
-        return $this->currentMessageStoragePrefix !== null;
+        $this->updateMessageStatus($message, $foundPriority);
+        if ($this->currentMessageStoragePrefix !== null && extension_loaded('pcntl')) {
+            $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
+            @unlink($flagFile);
+
+            $pid = pcntl_fork();
+
+            if ($pid === -1) {
+                // ERROR, fallback to non-forked routine
+                $callback($message, $foundPriority);
+            } elseif ($pid) {
+                // MAIN PROCESS
+                $this->forkMainProcess($callback, $message, $foundPriority, $pid, $flagFile);
+            } else {
+                // CHILD PROCESS
+                $this->forkChildProcess($message, $foundPriority, $flagFile);
+            }
+        } else {
+            $callback($message, $foundPriority);
+        }
+        $this->updateMessageStatus();
     }
 
-    private function getMyKey(): string
-    {
-        return sprintf(
-            '[%s][%s][%s]',
-            $this->myIdentifier,
-            $this->myPID,
-            gethostname() ?: 'unknown',
-        );
-    }
-
-    private function getAgentKey(string $key): string
-    {
-        return $this->currentMessageStoragePrefix . ':agent' . $key;
-    }
-
-    private function getStatusKey(string $key): string
-    {
-        return $this->currentMessageStoragePrefix . ':status' . $key;
-    }
-
+    /**
+     * If reliable messaging is enabled, writes data about processed message into redis.
+     */
     public function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void
     {
         $this->checkWriteAccess();
 
-        if (!$this->isReliableMessageHandlingEnabled()) {
+        if ($this->currentMessageStoragePrefix === null) {
             return;
         }
 
@@ -106,11 +115,15 @@ trait MessageReliabilityTrait
         }
     }
 
+    /**
+     * If reliable messaging is enabled, this will write status and percentage of completeness of processed message
+     * into redis.
+     */
     public function updateMessageProcessingStatus(?string $status = null, ?float $percent = null): void
     {
         $this->checkWriteAccess();
 
-        if (!$this->isReliableMessageHandlingEnabled()) {
+        if ($this->currentMessageStoragePrefix === null) {
             return;
         }
 
@@ -132,134 +145,24 @@ trait MessageReliabilityTrait
                     'percent' => $percent === null ? null : max(min($percent, 100.0), 0.0),
                     'timestamp' => microtime(true),
                 ]);
-                $this->redis->set($statusKey, $body);
+                if ($body !== false) {
+                    $this->redis->set($statusKey, $body);
+                }
             } catch (Throwable $exception) {
             }
         }
     }
 
-    private function removeMessageStatus(): void
-    {
-        try {
-            if (!$this->isReliableMessageHandlingEnabled()) {
-                return;
-            }
-
-            $key = $this->getMyKey();
-            $agentKey = $this->getAgentKey($key);
-            $statusKey = $this->getStatusKey($key);
-
-            $data = $this->redis->hget($this->currentMessageStoragePrefix, $key);
-
-            if ($data !== null) {
-                $data = json_decode($data, true);
-                if (isset($data['message'])) {
-                    // We leave unprocessed message in monitor
-                    return;
-                }
-            }
-
-            $this->redis->hdel($this->currentMessageStoragePrefix, $key);
-            $this->redis->del($agentKey);
-            $this->redis->del($statusKey);
-        } catch (Throwable $exception) {
-            // Just stop all exceptions
-        }
-    }
-
-    private function monitorCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
-    {
-        $this->updateMessageStatus($message, $foundPriority);
-        if ($this->isReliableMessageHandlingEnabled() && extension_loaded('pcntl')) {
-            $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
-            @unlink($flagFile);
-
-            $signals = true;
-            if (function_exists('pcntl_fork')) {
-                $signals = false;
-            }
-
-            if ($signals) {
-                $oldHandler = pcntl_signal_get_handler(SIGALRM);
-                $async = pcntl_async_signals(true);
-                pcntl_signal(SIGALRM, function () use ($message, $foundPriority) {
-                    try {
-                        $this->updateMessageStatus($message, $foundPriority);
-                        pcntl_alarm(1);
-                    } catch (Throwable $exception) {
-                    }
-                });
-                try {
-                    pcntl_alarm(1);
-                    $this->updateMessageStatus($message, $foundPriority);
-                    $callback($message, $foundPriority);
-                } finally {
-                    pcntl_alarm(0);
-                    if (is_string($oldHandler) && function_exists($oldHandler)) {
-                        pcntl_signal(SIGALRM, $oldHandler);
-                    } elseif (is_int($oldHandler)) {
-                        pcntl_signal(SIGALRM, $oldHandler);
-                    } else {
-                        pcntl_signal(SIGALRM, SIG_DFL);
-                    }
-                    pcntl_async_signals($async);
-                }
-            } else {
-                $this->updateMessageStatus($message, $foundPriority);
-                $pid = pcntl_fork();
-
-                if ($pid === -1) {
-                    // ERROR
-                    throw new RuntimeException('Unable to fork');
-                } elseif ($pid) {
-                    // MAIN PROCESS
-                    try {
-                        $this->redis->resetConnectionPool();
-                        $callback($message, $foundPriority);
-                    } finally {
-                        file_put_contents($flagFile, 'DONE');
-
-                        pcntl_waitpid($pid, $status);
-                        @unlink($flagFile);
-                    }
-                } else {
-                    // CHILD PROCESS
-                    $parentPid = posix_getppid();
-                    $this->redis->resetConnectionPool();
-
-                    while (true) {
-                        if (posix_getpgid($parentPid) === false) {
-                            exit(0); // Parent process is killed, so this ends too ...
-                        }
-
-                        $this->updateMessageStatus($message, $foundPriority);
-
-                        if (file_exists($flagFile)) {
-                            $content = file_get_contents($flagFile);
-                            if ($content === 'DONE') {
-                                break;
-                            }
-                        }
-
-                        sleep(1);
-                    }
-
-                    exit(0);
-                }
-            }
-        } else {
-            $callback($message, $foundPriority);
-        }
-        $this->updateMessageStatus();
-    }
-
+    /**
+     * If reliable messaging is enabled, this method will recover lost messages from stopped/killed workers.
+     */
     private function recoverMessages(): void
     {
-        if (!$this->isReliableMessageHandlingEnabled()) {
+        if ($this->currentMessageStoragePrefix === null) {
             return;
         }
 
-        if (!$this->myEmitter || !$this->myIdentifier || !$this->currentMessageStoragePrefix) {
+        if (!$this->myEmitter || !$this->myIdentifier) {
             return;
         }
 
@@ -331,6 +234,127 @@ trait MessageReliabilityTrait
         }
     }
 
+    /**
+     * @internal Do not use this method outside trait!
+     */
+    private function getMyKey(): string
+    {
+        return sprintf(
+            '[%s][%s][%s]',
+            $this->myIdentifier,
+            $this->myPID,
+            gethostname() ?: 'unknown',
+        );
+    }
+
+    /**
+     * @internal Do not use this method outside trait!
+     */
+    private function getAgentKey(string $key): string
+    {
+        return $this->currentMessageStoragePrefix . ':agent' . $key;
+    }
+
+    /**
+     * @internal Do not use this method outside trait!
+     */
+    private function getStatusKey(string $key): string
+    {
+        return $this->currentMessageStoragePrefix . ':status' . $key;
+    }
+
+    /**
+     * Remove all worker data from monitor if and only if the stored message in monitor is `null`.
+     *
+     * @internal Do not use this method outside trait!
+     */
+    private function removeMessageStatus(): void
+    {
+        try {
+            if ($this->currentMessageStoragePrefix === null) {
+                return;
+            }
+
+            $key = $this->getMyKey();
+            $agentKey = $this->getAgentKey($key);
+            $statusKey = $this->getStatusKey($key);
+
+            $data = $this->redis->hget($this->currentMessageStoragePrefix, $key);
+
+            if ($data !== null) {
+                $data = json_decode($data, true);
+                if (isset($data['message'])) {
+                    // We leave unprocessed message in monitor
+                    return;
+                }
+            }
+
+            $this->redis->hdel($this->currentMessageStoragePrefix, $key);
+            $this->redis->del($agentKey);
+            $this->redis->del($statusKey);
+        } catch (Throwable $exception) {
+            // Just stop all exceptions
+        }
+    }
+
+    /**
+     * Processes message in main process context.
+     *
+     * @internal Do not use this method outside trait!
+     */
+    private function forkMainProcess(
+        callable $callback,
+        MessageInterface $message,
+        int $foundPriority,
+        int $pid,
+        string $flagFile
+    ): void {
+        try {
+            $this->redis->resetConnectionPool();
+            $callback($message, $foundPriority);
+        } finally {
+            file_put_contents($flagFile, 'DONE');
+
+            pcntl_waitpid($pid, $status);
+            @unlink($flagFile);
+        }
+    }
+
+    /**
+     * Periodically signaling message processing until terminated or until parent is stopped/killed.
+     *
+     * @internal Do not use this method outside trait!
+     */
+    private function forkChildProcess(MessageInterface $message, int $foundPriority, string $flagFile): void
+    {
+        $parentPid = posix_getppid();
+        $this->redis->resetConnectionPool();
+
+        while (true) {
+            if (posix_getpgid($parentPid) === false) {
+                exit(0); // Parent process is killed, so this ends too ...
+            }
+
+            $this->updateMessageStatus($message, $foundPriority);
+
+            if (file_exists($flagFile)) {
+                $content = file_get_contents($flagFile);
+                if ($content === 'DONE') {
+                    break;
+                }
+            }
+
+            sleep(1);
+        }
+
+        exit(0);
+    }
+
+    /**
+     * This tests the call stack if the caller is {@see DriverInterface}.
+     *
+     * @internal Do not use this method outside trait!
+     */
     private function checkWriteAccess(): void
     {
         $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);

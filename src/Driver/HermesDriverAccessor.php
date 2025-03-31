@@ -92,6 +92,7 @@ final class HermesDriverAccessor
             return;
         }
 
+        $this->driver->updateMessageStatus($this->message, $this->priority);
         $this->driver->updateMessageProcessingStatus($status, $percent);
     }
 

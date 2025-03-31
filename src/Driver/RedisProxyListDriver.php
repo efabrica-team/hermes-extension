@@ -20,7 +20,7 @@ use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 
-final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface, MessageReliabilityInterface
+final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface, MessageReliabilityInterface, ForkableDriverInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
@@ -28,6 +28,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
     use HeartbeatBehavior;
     use QueueAwareTrait;
     use MessageReliabilityTrait;
+    use ForkableDriverTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -111,25 +112,9 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                         $accessor->setMessageInfo($message, $foundPriority);
                         $accessor->setProcessingStatus();
                         try {
-                            if (function_exists('pcntl_fork')) {
-                                $pid = pcntl_fork();
-
-                                if ($pid === -1) {
-                                    $this->monitorCallback($callback, $message, $foundPriority);
-                                } elseif ($pid) {
-                                    // MAIN PROCESS
-                                    pcntl_waitpid($pid, $status);
-                                } else {
-                                    // CHILD PROCESS
-                                    try {
-                                        $this->monitorCallback($callback, $message, $foundPriority);
-                                    } finally {
-                                        exit(0);
-                                    }
-                                }
-                            } else {
-                                $this->monitorCallback($callback, $message, $foundPriority);
-                            }
+                            $this->doForkProcess(
+                                static fn () => $this->monitorCallback($callback, $message, $foundPriority),
+                            );
                         } finally {
                             $accessor->setProcessingStatus();
                             $accessor->clearMessageInfo();
