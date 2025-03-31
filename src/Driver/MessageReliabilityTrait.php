@@ -19,7 +19,7 @@ trait MessageReliabilityTrait
 {
     private RedisProxy $redis;
 
-    private ?string $currentMessageStoragePrefix = null;
+    private ?string $monitorHashRedisKey = null;
 
     private ?EmitterInterface $myEmitter = null;
 
@@ -34,15 +34,17 @@ trait MessageReliabilityTrait
 
     /**
      * Enables or disables (default) reliable messaging.
+     *
+     *
      */
     public function enableReliableMessageHandling(
         string $storagePrefix,
         EmitterInterface $emitter,
         int $keepAliveTTL
     ): void {
-        $this->currentMessageStoragePrefix = $storagePrefix;
+        $this->monitorHashRedisKey = $storagePrefix;
         $this->myEmitter = $emitter;
-        $this->keepAliveTTL = $keepAliveTTL;
+        $this->keepAliveTTL = max(60, $keepAliveTTL);
         $this->myIdentifier = Uuid::uuid4()->toString();
         $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
     }
@@ -54,7 +56,7 @@ trait MessageReliabilityTrait
     private function monitorCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
     {
         $this->updateMessageStatus($message, $foundPriority);
-        if ($this->currentMessageStoragePrefix !== null && extension_loaded('pcntl')) {
+        if ($this->monitorHashRedisKey !== null && extension_loaded('pcntl')) {
             $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
             @unlink($flagFile);
 
@@ -83,7 +85,7 @@ trait MessageReliabilityTrait
     {
         $this->checkWriteAccess();
 
-        if ($this->currentMessageStoragePrefix === null) {
+        if ($this->monitorHashRedisKey === null) {
             return;
         }
 
@@ -107,8 +109,8 @@ trait MessageReliabilityTrait
 
         try {
             $encoded = json_encode($status);
-            if ($encoded !== false && $this->currentMessageStoragePrefix !== null && $this->keepAliveTTL !== null) {
-                $this->redis->hset($this->currentMessageStoragePrefix, $key, $encoded);
+            if ($encoded !== false && $this->monitorHashRedisKey !== null && $this->keepAliveTTL !== null) {
+                $this->redis->hset($this->monitorHashRedisKey, $key, $encoded);
                 $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
             }
         } catch (Throwable $exception) {
@@ -123,7 +125,7 @@ trait MessageReliabilityTrait
     {
         $this->checkWriteAccess();
 
-        if ($this->currentMessageStoragePrefix === null) {
+        if ($this->monitorHashRedisKey === null) {
             return;
         }
 
@@ -158,7 +160,7 @@ trait MessageReliabilityTrait
      */
     private function recoverMessages(): void
     {
-        if ($this->currentMessageStoragePrefix === null) {
+        if ($this->monitorHashRedisKey === null) {
             return;
         }
 
@@ -168,7 +170,7 @@ trait MessageReliabilityTrait
 
         $lockKey = sprintf(
             '%s:lock',
-            $this->currentMessageStoragePrefix,
+            $this->monitorHashRedisKey,
         );
 
         if ($this->redis->setex($lockKey, MessageReliabilityInterface::LOCK_TTL, $this->myIdentifier)) {
@@ -179,7 +181,7 @@ trait MessageReliabilityTrait
 
                 do {
                     try {
-                        $items = $this->redis->hscan($this->currentMessageStoragePrefix, $cursor, null, 1000);
+                        $items = $this->redis->hscan($this->monitorHashRedisKey, $cursor, null, 1000);
                         if (!is_array($items)) {
                             break;
                         }
@@ -193,7 +195,7 @@ trait MessageReliabilityTrait
                             if (hrtime(true) - $start >= MessageReliabilityInterface::LOCK_TIME_DIFF_MAX) {
                                 return;
                             }
-                            $this->redis->hdel($this->currentMessageStoragePrefix, $field);
+                            $this->redis->hdel($this->monitorHashRedisKey, $field);
                             $this->redis->del($statusKey);
                             if (isset($status['message'])) {
                                 $message = $status['message'];
@@ -252,7 +254,7 @@ trait MessageReliabilityTrait
      */
     private function getAgentKey(string $key): string
     {
-        return $this->currentMessageStoragePrefix . ':agent' . $key;
+        return $this->monitorHashRedisKey . ':agent' . $key;
     }
 
     /**
@@ -260,7 +262,7 @@ trait MessageReliabilityTrait
      */
     private function getStatusKey(string $key): string
     {
-        return $this->currentMessageStoragePrefix . ':status' . $key;
+        return $this->monitorHashRedisKey . ':status' . $key;
     }
 
     /**
@@ -271,7 +273,7 @@ trait MessageReliabilityTrait
     private function removeMessageStatus(): void
     {
         try {
-            if ($this->currentMessageStoragePrefix === null) {
+            if ($this->monitorHashRedisKey === null) {
                 return;
             }
 
@@ -279,7 +281,7 @@ trait MessageReliabilityTrait
             $agentKey = $this->getAgentKey($key);
             $statusKey = $this->getStatusKey($key);
 
-            $data = $this->redis->hget($this->currentMessageStoragePrefix, $key);
+            $data = $this->redis->hget($this->monitorHashRedisKey, $key);
 
             if ($data !== null) {
                 $data = json_decode($data, true);
@@ -289,7 +291,7 @@ trait MessageReliabilityTrait
                 }
             }
 
-            $this->redis->hdel($this->currentMessageStoragePrefix, $key);
+            $this->redis->hdel($this->monitorHashRedisKey, $key);
             $this->redis->del($agentKey);
             $this->redis->del($statusKey);
         } catch (Throwable $exception) {
