@@ -37,6 +37,8 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
 
     private float $refreshInterval;
 
+    private bool $useTopPriorityFallback = false;
+
     public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1)
     {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
@@ -44,6 +46,11 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
         $this->redis = $redis;
         $this->refreshInterval = $refreshInterval;
         $this->serializer = new MessageSerializer();
+    }
+
+    public function setUseTopPriorityFallback(bool $useTopPriorityFallback): void
+    {
+        $this->useTopPriorityFallback = $useTopPriorityFallback;
     }
 
     /**
@@ -123,6 +130,10 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                         }
                         $this->incrementProcessedItems();
                         $this->recoverMessages();
+
+                        if ($this->useTopPriorityFallback) {
+                            break 2;
+                        }
                     }
                 }
 
