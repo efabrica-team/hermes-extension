@@ -10,6 +10,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Tomaj\Hermes\DispatcherInterface;
 use Tomaj\Hermes\Driver\DriverInterface;
 
@@ -44,24 +45,26 @@ final class HermesWorker extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $priorities = [];
         $queues = $this->getRegisteredQueues();
+        $prioritiesSet = [];
 
         if ($queues) {
             $prioritiesInput = $input->getOption('restrict-priority');
             if (is_array($prioritiesInput)) {
                 $priorities = array_map('intval', $prioritiesInput);
                 $queuePriorities = array_keys($queues);
+                $io = new SymfonyStyle($input, $output);
                 foreach ($priorities as $priority) {
                     if (!in_array($priority, $queuePriorities, true)) {
-                        $output->writeln('<error>Priority ' . $priority . ' is not defined!</error>');
-                        return self::FAILURE;
+                        $io->caution('Priority ' . $priority . ' is not defined!');
+                        continue;
                     }
+                    $prioritiesSet[] = $priority;
                 }
             }
         }
 
-        $this->dispatcher->handle($priorities);
+        $this->dispatcher->handle($prioritiesSet);
         $output->writeln('Hermes worker end.');
         return self::SUCCESS;
     }
