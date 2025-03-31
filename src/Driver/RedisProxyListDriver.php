@@ -113,7 +113,9 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                         $accessor->setProcessingStatus();
                         try {
                             $this->doForkProcess(
-                                fn () => $this->monitorCallback($callback, $message, $foundPriority),
+                                function () use ($callback, $message, $foundPriority) {
+                                    $this->monitorCallback($callback, $message, $foundPriority);
+                                }
                             );
                         } finally {
                             $accessor->setProcessingStatus();
