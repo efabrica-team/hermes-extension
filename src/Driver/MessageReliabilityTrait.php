@@ -55,27 +55,36 @@ trait MessageReliabilityTrait
      */
     private function monitorCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
     {
-        $this->updateMessageStatus($message, $foundPriority);
-        if ($this->monitorHashRedisKey !== null && extension_loaded('pcntl')) {
-            $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
-            @unlink($flagFile);
+        $accessor = HermesDriverAccessor::getInstance();
 
-            $pid = pcntl_fork();
+        $accessor->setMessageInfo($message, $foundPriority);
+        $accessor->setProcessingStatus();
+        try {
+            $this->updateMessageStatus($message, $foundPriority);
+            if ($this->monitorHashRedisKey !== null && extension_loaded('pcntl')) {
+                $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
+                @unlink($flagFile);
 
-            if ($pid === -1) {
-                // ERROR, fallback to non-forked routine
-                $callback($message, $foundPriority);
-            } elseif ($pid) {
-                // MAIN PROCESS
-                $this->forkMainProcess($callback, $message, $foundPriority, $pid, $flagFile);
+                $pid = pcntl_fork();
+
+                if ($pid === -1) {
+                    // ERROR, fallback to non-forked routine
+                    $callback($message, $foundPriority);
+                } elseif ($pid) {
+                    // MAIN PROCESS
+                    $this->forkMainProcess($callback, $message, $foundPriority, $pid, $flagFile);
+                } else {
+                    // CHILD PROCESS
+                    $this->forkChildProcess($message, $foundPriority, $flagFile);
+                }
             } else {
-                // CHILD PROCESS
-                $this->forkChildProcess($message, $foundPriority, $flagFile);
+                $callback($message, $foundPriority);
             }
-        } else {
-            $callback($message, $foundPriority);
+            $this->updateMessageStatus();
+        } finally {
+            $accessor->setProcessingStatus();
+            $accessor->clearMessageInfo();
         }
-        $this->updateMessageStatus();
     }
 
     /**
