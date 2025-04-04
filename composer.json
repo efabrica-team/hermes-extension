@@ -3,17 +3,11 @@
     "description": "Extension for tomaj/hermes",
     "keywords": ["worker", "driver", "redis-proxy", "heartbeat"],
     "license": "MIT",
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/andrejjursa/redis-proxy"
-        }
-    ],
     "require": {
         "php": "^7.4 | ^8.0",
         "ext-json": "*",
         "tomaj/hermes": "^4.0",
-        "lulco/redis-proxy": "dev-jursa/connection-reset as 1.5.0-dev",
+        "lulco/redis-proxy": "^1.5.0",
         "symfony/console": "^5.4 | ^6.0 | ^7.0",
         "ext-posix": "*",
         "ext-pcntl": "*"
