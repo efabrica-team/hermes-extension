@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-04-09
 ### Added
 - HermesWorker can now accept priorities restriction as option
 - RedisProxyListDriver can now utilize reliable messaging, driver accessor, process forking and top priority fallback
@@ -50,7 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RedisProxySortedSetDriver
 - DummyDriver (for testing purposes)
 
-[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/1.2.1...main
+[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/1.3.0...main
+[1.3.0]: https://github.com/efabrica-team/hermes-extension/compare/1.2.1...1.3.0
 [1.2.1]: https://github.com/efabrica-team/hermes-extension/compare/1.2.0...1.2.1
 [1.2.0]: https://github.com/efabrica-team/hermes-extension/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/efabrica-team/hermes-extension/compare/1.0.0...1.1.0

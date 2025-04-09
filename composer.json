@@ -6,11 +6,11 @@
     "require": {
         "php": "^7.4 | ^8.0",
         "ext-json": "*",
+        "ext-posix": "*",
+        "ext-pcntl": "*",
         "tomaj/hermes": "^4.0",
         "lulco/redis-proxy": "^1.5.0",
-        "symfony/console": "^5.4 | ^6.0 | ^7.0",
-        "ext-posix": "*",
-        "ext-pcntl": "*"
+        "symfony/console": "^5.4 | ^6.0 | ^7.0"
     },
     "autoload": {
         "psr-4": {
