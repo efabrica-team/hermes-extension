@@ -190,6 +190,7 @@ trait MessageReliabilityTrait
 
                 do {
                     try {
+                        /** @var string[]|bool|null $items */
                         $items = $this->redis->hscan($this->monitorHashRedisKey, $cursor, null, 1000);
                         if (!is_array($items)) {
                             break;
@@ -200,6 +201,7 @@ trait MessageReliabilityTrait
                             if ($this->redis->get($agentKey) !== null) {
                                 continue;
                             }
+                            /** @var array<string, mixed> $status */
                             $status = json_decode($value, true);
                             if (hrtime(true) - $start >= MessageReliabilityInterface::LOCK_TIME_DIFF_MAX) {
                                 return;
