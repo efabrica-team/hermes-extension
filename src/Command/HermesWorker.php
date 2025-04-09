@@ -51,7 +51,13 @@ final class HermesWorker extends Command
         if ($queues) {
             $prioritiesInput = $input->getOption('restrict-priority');
             if (is_array($prioritiesInput)) {
-                $priorities = array_map(static function ($priority) { return (int)$priority; }, $prioritiesInput);
+                $priorities = array_map(
+                    static function ($priority)
+                    {
+                        return (int)$priority;
+                    },
+                    $prioritiesInput,
+                );
                 $queuePriorities = array_keys($queues);
                 $io = new SymfonyStyle($input, $output);
                 foreach ($priorities as $priority) {
