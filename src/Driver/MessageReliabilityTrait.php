@@ -214,11 +214,12 @@ trait MessageReliabilityTrait
                                  *     payload: null|array<string, mixed>,
                                  *     id: null|string,
                                  *     created: null|float,
-                                 *     executeAt: null|float,
+                                 *     execute_dt: null|float,
                                  *     retries: int
                                  * } $message
                                  */
                                 $message = $status['message'];
+                                /** @var int $priority */
                                 $priority = $status['priority'] ?? Dispatcher::DEFAULT_PRIORITY;
                                 $newMessage = new Message(
                                     $message['type'],
@@ -304,6 +305,7 @@ trait MessageReliabilityTrait
             $data = $this->redis->hget($this->monitorHashRedisKey, $key);
 
             if ($data !== null) {
+                /** @returns array<string, mixed> $data */
                 $data = json_decode($data, true);
                 if (isset($data['message'])) {
                     // We leave unprocessed message in monitor
