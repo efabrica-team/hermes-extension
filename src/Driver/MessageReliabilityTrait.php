@@ -38,11 +38,11 @@ trait MessageReliabilityTrait
      *
      */
     public function enableReliableMessageHandling(
-        string $storagePrefix,
+        string $monitorKeyPrefix,
         EmitterInterface $emitter,
         int $keepAliveTTL
     ): void {
-        $this->monitorHashRedisKey = $storagePrefix;
+        $this->monitorHashRedisKey = $monitorKeyPrefix;
         $this->myEmitter = $emitter;
         $this->keepAliveTTL = max(60, $keepAliveTTL);
         $this->myIdentifier = Uuid::uuid4()->toString();
@@ -118,7 +118,7 @@ trait MessageReliabilityTrait
 
         try {
             $encoded = json_encode($status);
-            if ($encoded !== false && $this->monitorHashRedisKey !== null && $this->keepAliveTTL !== null) {
+            if ($encoded !== false && $this->keepAliveTTL !== null) {
                 $this->redis->hset($this->monitorHashRedisKey, $key, $encoded);
                 $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
             }

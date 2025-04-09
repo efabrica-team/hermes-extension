@@ -14,7 +14,7 @@ interface MessageReliabilityInterface
 
     const REQUEUE_REPEATS = 3;
 
-    public function enableReliableMessageHandling(string $storagePrefix, EmitterInterface $emitter, int $keepAliveTTL): void;
+    public function enableReliableMessageHandling(string $monitorKeyPrefix, EmitterInterface $emitter, int $keepAliveTTL): void;
 
     public function updateMessageStatus(?MessageInterface $message = null, ?int $priority = null): void;
 
