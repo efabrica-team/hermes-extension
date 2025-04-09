@@ -209,6 +209,15 @@ trait MessageReliabilityTrait
                             $this->redis->hdel($this->monitorHashRedisKey, $field);
                             $this->redis->del($statusKey);
                             if (isset($status['message'])) {
+                                /** @var array{
+                                 *     type: string,
+                                 *     payload: null|array<string, mixed>,
+                                 *     id: null|string,
+                                 *     created: null|float,
+                                 *     executeAt: null|float,
+                                 *     retries: int
+                                 * } $message
+                                 */
                                 $message = $status['message'];
                                 $priority = $status['priority'] ?? Dispatcher::DEFAULT_PRIORITY;
                                 $newMessage = new Message(
