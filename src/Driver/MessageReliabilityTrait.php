@@ -214,7 +214,7 @@ trait MessageReliabilityTrait
                                  *     payload: null|array<string, mixed>,
                                  *     id: null|string,
                                  *     created: null|float,
-                                 *     execute_dt: null|float,
+                                 *     execute_at: null|float,
                                  *     retries: int
                                  * } $message
                                  */
@@ -305,9 +305,9 @@ trait MessageReliabilityTrait
             $data = $this->redis->hget($this->monitorHashRedisKey, $key);
 
             if ($data !== null) {
-                /** @returns array<string, mixed> $data */
-                $data = json_decode($data, true);
-                if (isset($data['message'])) {
+                /** @var array<string, mixed> $decodedData */
+                $decodedData = json_decode($data, true);
+                if (isset($decodedData['message'])) {
                     // We leave unprocessed message in monitor
                     return;
                 }
