@@ -20,12 +20,13 @@ use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 
-final class RedisProxySetDriver implements DriverInterface
+final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
     use SerializerAwareTrait;
     use HeartbeatBehavior;
+    use QueueAwareTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];

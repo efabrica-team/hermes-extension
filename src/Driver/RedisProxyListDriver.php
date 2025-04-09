@@ -17,15 +17,18 @@ use Tomaj\Hermes\Driver\ShutdownTrait;
 use Tomaj\Hermes\Driver\UnknownPriorityException;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
-use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tomaj\Hermes\SerializeException;
+use Tomaj\Hermes\Shutdown\ShutdownException;
 
-final class RedisProxyListDriver implements DriverInterface
+final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface, MessageReliabilityInterface, ForkableDriverInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
     use SerializerAwareTrait;
     use HeartbeatBehavior;
+    use QueueAwareTrait;
+    use MessageReliabilityTrait;
+    use ForkableDriverTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -34,6 +37,8 @@ final class RedisProxyListDriver implements DriverInterface
 
     private float $refreshInterval;
 
+    private bool $useTopPriorityFallback = false;
+
     public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1)
     {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
@@ -41,6 +46,11 @@ final class RedisProxyListDriver implements DriverInterface
         $this->redis = $redis;
         $this->refreshInterval = $refreshInterval;
         $this->serializer = new MessageSerializer();
+    }
+
+    public function setUseTopPriorityFallback(bool $useTopPriorityFallback): void
+    {
+        $this->useTopPriorityFallback = $useTopPriorityFallback;
     }
 
     /**
@@ -67,48 +77,71 @@ final class RedisProxyListDriver implements DriverInterface
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
+        $accessor = HermesDriverAccessor::getInstance();
+        $accessor->setDriver($this);
         $queues = $this->queues;
         krsort($queues);
-        while (true) {
-            $this->checkShutdown();
-            $this->checkToBeKilled();
-            if (!$this->shouldProcessNext()) {
-                break;
-            }
-
-            $messageString = null;
-            $foundPriority = null;
-
-            foreach ($queues as $priority => $name) {
-                if (!$this->shouldProcessNext()) {
-                    break 2;
-                }
-                if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
-                    continue;
-                }
-                $key = $this->getKey($priority);
-                $foundPriority = $priority;
-                while (true) {
-                    if (!$this->shouldProcessNext()) {
-                        break 3;
-                    }
-                    $messageString = $this->pop($key);
-                    if ($messageString === null) {
-                        break;
-                    }
-                    $this->ping(HermesProcess::STATUS_PROCESSING);
-                    $message = $this->serializer->unserialize($messageString);
-                    $callback($message, $foundPriority);
-                    $this->incrementProcessedItems();
-                }
-            }
-
-            if ($this->refreshInterval) {
+        try {
+            while (true) {
                 $this->checkShutdown();
                 $this->checkToBeKilled();
-                $this->ping(HermesProcess::STATUS_IDLE);
-                usleep(intval($this->refreshInterval * 1000000));
+                if (!$this->shouldProcessNext()) {
+                    break;
+                }
+
+                $this->recoverMessages();
+
+                $messageString = null;
+                $foundPriority = null;
+
+                $this->updateMessageStatus();
+
+                foreach ($queues as $priority => $name) {
+                    if (!$this->shouldProcessNext()) {
+                        break 2;
+                    }
+                    if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
+                        continue;
+                    }
+                    $key = $this->getKey($priority);
+                    $foundPriority = $priority;
+                    while (true) {
+                        if (!$this->shouldProcessNext()) {
+                            break 3;
+                        }
+                        $this->updateMessageStatus();
+                        $messageString = $this->pop($key);
+                        if ($messageString === null) {
+                            break;
+                        }
+                        $this->ping(HermesProcess::STATUS_PROCESSING);
+                        $message = $this->serializer->unserialize($messageString);
+                        $this->doForkProcess(
+                            function () use ($callback, $message, $foundPriority) {
+                                $this->monitorCallback($callback, $message, $foundPriority);
+                            }
+                        );
+                        $this->incrementProcessedItems();
+                        $this->recoverMessages();
+
+                        if ($this->useTopPriorityFallback) {
+                            break 2;
+                        }
+                    }
+                }
+
+                $this->updateMessageStatus();
+
+                if ($this->refreshInterval) {
+                    $this->checkShutdown();
+                    $this->checkToBeKilled();
+                    $this->ping(HermesProcess::STATUS_IDLE);
+                    usleep(intval($this->refreshInterval * 1000000));
+                }
             }
+        } finally {
+            $this->removeMessageStatus();
+            $accessor->clearMessageInfo();
         }
     }
 
