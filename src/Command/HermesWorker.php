@@ -49,11 +49,11 @@ final class HermesWorker extends Command
         $prioritiesSet = [];
 
         if ($queues) {
+            /** @var string[] $prioritiesInput */
             $prioritiesInput = $input->getOption('restrict-priority');
             if (is_array($prioritiesInput)) {
                 $priorities = array_map(
-                    static function ($priority)
-                    {
+                    static function ($priority) {
                         return (int)$priority;
                     },
                     $prioritiesInput,
