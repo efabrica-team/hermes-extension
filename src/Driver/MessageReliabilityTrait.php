@@ -182,7 +182,16 @@ trait MessageReliabilityTrait
             $this->monitorHashRedisKey,
         );
 
-        if ($this->redis->setex($lockKey, MessageReliabilityInterface::LOCK_TTL, $this->myIdentifier)) {
+        $locked = (bool)$this->redis->rawCommand(
+            'SET',
+            $lockKey,
+            $this->myIdentifier,
+            'NX',
+            'EX',
+            MessageReliabilityInterface::LOCK_TTL,
+        );
+
+        if ($locked) {
             try {
                 $start = hrtime(true);
 
