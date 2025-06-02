@@ -6,6 +6,7 @@ namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
+use Efabrica\HermesExtension\Heartbeat\HermesProcess;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
@@ -96,6 +97,15 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                 }
 
                 $envelope = $this->receiveMessage($queues, $priorities);
+                $this->ping(HermesProcess::STATUS_PROCESSING);
+                $this->incrementProcessedItems();
+                $message = $envelope->getMessage();
+                $foundPriority = $this->keyToPriority($envelope->getQueue());
+                $this->doForkProcess(
+                    function () use ($callback, $message, $foundPriority) {
+                        $callback($message, $foundPriority);
+                    }
+                );
                 break;
             }
         } finally {
@@ -234,5 +244,19 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             throw new UnknownPriorityException("Unknown priority {$priority}");
         }
         return $this->queues[$priority];
+    }
+
+    /**
+     * @throws UnknownPriorityException
+     */
+    private function keyToPriority(string $key): int
+    {
+        foreach ($this->queues as $priority => $queue) {
+            if ($queue === $key) {
+                return $priority;
+            }
+        }
+
+        throw new UnknownPriorityException("Unknown queue {$key}, priority can't be determined");
     }
 }
