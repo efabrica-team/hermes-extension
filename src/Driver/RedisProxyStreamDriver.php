@@ -60,7 +60,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             'body',
             $this->serializer->serialize($message),
         );
-        return preg_match('/[1-9]\d{9,12}-\d+$/', $id);
+        return (bool)preg_match('/[1-9]\d{9,12}-\d+$/', $id);
     }
 
     public function setupPriorityQueue(string $name, int $priority): void
@@ -77,6 +77,8 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
         $queues = $this->queues;
         krsort($queues);
+
+        $this->prepareConsumer();
 
         try {
             while (true) {
@@ -127,7 +129,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         $scriptFile = __DIR__ . '/../Scripts/initiateStreamAndGroup.lua';
         $scriptSha = $this->getScriptSha($scriptFile);
 
-        $keys = [$key, self::STREAM_CONSUMERS_GROUP, $this->myIdentifier];
+        $keys = [$key, self::STREAM_CONSUMERS_GROUP];
 
         [$result, $message] = $this->redis->rawCommand(
             'EVALSHA',
@@ -135,6 +137,29 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             count($keys),
             ...$keys,
         );
+    }
+
+    private function prepareConsumer(): void
+    {
+        foreach ($this->queues as $queue) {
+            $result = $this->redis->rawCommand(
+                'XGROUP',
+                'CREATECONSUMER',
+                $queue,
+                self::STREAM_CONSUMERS_GROUP,
+                $this->myIdentifier,
+            );
+            if ((int)$result === 0) {
+                throw new \RuntimeException(
+                    sprintf(
+                        'Consumer %s already exists in stream %s and group %s!',
+                        $this->myIdentifier,
+                        $queue,
+                        self::STREAM_CONSUMERS_GROUP,
+                    ),
+                );
+            }
+        }
     }
 
     private function removeConsumer(): void
