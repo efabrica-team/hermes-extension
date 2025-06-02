@@ -10,19 +10,28 @@ final class StreamMessageEnvelope
 {
     private string $queue;
 
+    private string $id;
+
     private MessageInterface $message;
 
     public function __construct(
         string $queue,
-        MessageInterface $message,
+        string $id,
+        MessageInterface $message
     ) {
         $this->queue = $queue;
+        $this->id = $id;
         $this->message = $message;
     }
 
     public function getQueue(): string
     {
         return $this->queue;
+    }
+
+    public function getId(): string
+    {
+        return $this->id;
     }
 
     public function getMessage(): MessageInterface

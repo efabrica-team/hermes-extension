@@ -30,6 +30,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     use ForkableDriverTrait;
 
     private const STREAM_CONSUMERS_GROUP = 'consumers';
+    private const MESSAGE_ID_PATTERN = '/[1-9]\d{9,12}-\d+$/';
 
     /** @var array<int, string> */
     private array $queues = [];
@@ -60,7 +61,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             'body',
             $this->serializer->serialize($message),
         );
-        return (bool)preg_match('/[1-9]\d{9,12}-\d+$/', $id);
+        return (bool)preg_match(self::MESSAGE_ID_PATTERN, $id);
     }
 
     public function setupPriorityQueue(string $name, int $priority): void
@@ -121,6 +122,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
         return new StreamMessageEnvelope(
             $queues[0],
+            '0-0',
             new Message('type'),
         );
     }
