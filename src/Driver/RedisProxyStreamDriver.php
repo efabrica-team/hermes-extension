@@ -18,6 +18,8 @@ use Tomaj\Hermes\Driver\UnknownPriorityException;
 use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
+use Tomaj\Hermes\SerializeException;
+use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tracy\Debugger;
 
 final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterface, ForkableDriverInterface
@@ -71,6 +73,10 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         $this->setupStreamAndGroup($name);
     }
 
+    /**
+     * @throws ShutdownException
+     * @throws SerializeException
+     */
     public function wait(Closure $callback, array $priorities): void
     {
         $accessor = HermesDriverAccessor::getInstance();
@@ -79,7 +85,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         $queues = $this->queues;
         krsort($queues);
 
-        $this->prepareConsumer();
+        $this->prepareConsumer($priorities);
 
         try {
             while (true) {
@@ -89,22 +95,32 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     break;
                 }
 
-                $envelope = $this->receiveMessage($queues);
+                $envelope = $this->receiveMessage($queues, $priorities);
                 break;
             }
         } finally {
-            $this->removeConsumer();
+            $this->removeConsumer($priorities);
             $accessor->clearMessageInfo();
         }
     }
 
-    private function receiveMessage(array $queues): ?StreamMessageEnvelope
+    /**
+     * @throws SerializeException
+     */
+    private function receiveMessage(array $queues, array $priorities): ?StreamMessageEnvelope
     {
+        $activeQueues = [];
+        foreach ($queues as $priority => $queue) {
+            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
+                continue;
+            }
+            $activeQueues[$priority] = $queue;
+        }
         $streams = [];
         if ($this->refreshInterval > 0) {
             $streams = ['BLOCK', (int)ceil($this->refreshInterval * 1000)];
         }
-        $streams = [...$streams, 'STREAMS', ...$queues, ...array_fill(0, count($queues), '>')];
+        $streams = [...$streams, 'STREAMS', ...$activeQueues, ...array_fill(0, count($activeQueues), '>')];
 
         $message = $this->redis->rawCommand(
             'XREADGROUP',
@@ -120,10 +136,15 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             return null;
         }
 
+        $message = $message[0];
+        $currentStream = $message[0];
+        $currentId = $message[1][0][0];
+        $currentBody = $message[1][0][1][1];
+
         return new StreamMessageEnvelope(
-            $queues[0],
-            '0-0',
-            new Message('type'),
+            $currentStream,
+            $currentId,
+            $this->serializer->unserialize($currentBody),
         );
     }
 
@@ -142,9 +163,12 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         );
     }
 
-    private function prepareConsumer(): void
+    private function prepareConsumer(array $priorities): void
     {
-        foreach ($this->queues as $queue) {
+        foreach ($this->queues as $priority => $queue) {
+            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
+                continue;
+            }
             $result = $this->redis->rawCommand(
                 'XGROUP',
                 'CREATECONSUMER',
@@ -165,12 +189,15 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         }
     }
 
-    private function removeConsumer(): void
+    private function removeConsumer(array $priorities): void
     {
         $scriptFile = __DIR__ . '/../Scripts/deleteConsumer.lua';
         $scriptSha = $this->getScriptSha($scriptFile);
 
-        foreach ($this->queues as $queue) {
+        foreach ($this->queues as $priority => $queue) {
+            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
+                continue;
+            }
             try {
                 $keys = [$queue, self::STREAM_CONSUMERS_GROUP, $this->myIdentifier];
                 $this->redis->rawCommand(
