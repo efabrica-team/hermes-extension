@@ -101,12 +101,13 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     {
         $streams = [];
         if ($this->refreshInterval > 0) {
-            $streams = ['BLOCK', ceil($this->refreshInterval * 1000)];
+            $streams = ['BLOCK', (int)ceil($this->refreshInterval * 1000)];
         }
         $streams = [...$streams, 'STREAMS', ...$queues, ...array_fill(0, count($queues), '>')];
 
         $message = $this->redis->rawCommand(
             'XREADGROUP',
+            'GROUP',
             self::STREAM_CONSUMERS_GROUP,
             $this->myIdentifier,
             'COUNT',
