@@ -14,6 +14,7 @@ use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\Driver\MaxItemsTrait;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
 use Tomaj\Hermes\Driver\ShutdownTrait;
+use Tomaj\Hermes\Driver\UnknownPriorityException;
 use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
@@ -51,7 +52,15 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
     public function send(MessageInterface $message, int $priority = Dispatcher::DEFAULT_PRIORITY): bool
     {
-        // TODO: Implement send() method.
+        $key = $this->getKey($priority);
+        $id = $this->redis->rawCommand(
+            'XADD',
+            $key,
+            '*',
+            'body',
+            $this->serializer->serialize($message),
+        );
+        return preg_match('/[1-9]\d{9,12}-\d+$/', $id);
     }
 
     public function setupPriorityQueue(string $name, int $priority): void
@@ -159,5 +168,16 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         }
 
         return $scriptSha;
+    }
+
+    /**
+     * @throws UnknownPriorityException
+     */
+    private function getKey(int $priority): string
+    {
+        if (!isset($this->queues[$priority])) {
+            throw new UnknownPriorityException("Unknown priority {$priority}");
+        }
+        return $this->queues[$priority];
     }
 }
