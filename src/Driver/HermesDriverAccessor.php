@@ -42,13 +42,13 @@ final class HermesDriverAccessor
         $this->priority = $priority;
     }
 
-    public function setEnvelopeInfo(?StreamMessageEnvelope $envelope, ?int $priority): void
+    public function setEnvelopeInfo(?StreamMessageEnvelope $envelope): void
     {
         $this->checkWriteAccess();
 
         $this->message = null;
         $this->envelope = $envelope;
-        $this->priority = $priority;
+        $this->priority = $envelope !== null ? $envelope->getPriority() : null;
     }
 
     public function clearTransmissionInfo(): void
@@ -84,15 +84,21 @@ final class HermesDriverAccessor
 
     public function signalProcessingUpdate(): void
     {
-        if (!$this->driver instanceof MessageReliabilityInterface) {
+        if (!$this->driver instanceof MessageReliabilityInterface
+            && !$this->driver instanceof MonitoredStreamInterface
+        ) {
             return;
         }
 
-        if ($this->message === null || $this->priority === null) {
+        if (($this->message === null && $this->envelope === null) || $this->priority === null) {
             return;
         }
 
-        $this->driver->updateMessageStatus($this->message, $this->priority);
+        if ($this->driver instanceof MessageReliabilityInterface) {
+            $this->driver->updateMessageStatus($this->message, $this->priority);
+        } elseif ($this->driver instanceof MonitoredStreamInterface) {
+            $this->driver->updateEnvelopeStatus($this->envelope);
+        }
     }
 
     /**
@@ -103,16 +109,23 @@ final class HermesDriverAccessor
      */
     public function setProcessingStatus(?string $status = null, ?float $percent = null): void
     {
-        if (!$this->driver instanceof MessageReliabilityInterface) {
+        if (!$this->driver instanceof MessageReliabilityInterface
+            && !$this->driver instanceof MonitoredStreamInterface
+        ) {
             return;
         }
 
-        if ($this->message === null || $this->priority === null) {
+        if (($this->message === null && $this->envelope === null) || $this->priority === null) {
             return;
         }
 
-        $this->driver->updateMessageStatus($this->message, $this->priority);
-        $this->driver->updateMessageProcessingStatus($status, $percent);
+        if ($this->driver instanceof MessageReliabilityInterface) {
+            $this->driver->updateMessageStatus($this->message, $this->priority);
+            $this->driver->updateMessageProcessingStatus($status, $percent);
+        } elseif ($this->driver instanceof MonitoredStreamInterface) {
+            $this->driver->updateEnvelopeStatus($this->envelope);
+            $this->driver->updateEnvelopeProcessingStatus($status, $percent);
+        }
     }
 
     private function checkWriteAccess(): void

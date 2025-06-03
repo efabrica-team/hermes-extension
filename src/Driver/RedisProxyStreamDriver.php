@@ -10,9 +10,11 @@ use Efabrica\HermesExtension\Heartbeat\HermesProcess;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
+use RedisProxy\RedisProxyException;
 use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\Driver\MaxItemsTrait;
+use Tomaj\Hermes\Driver\NotSupportedException;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
 use Tomaj\Hermes\Driver\ShutdownTrait;
 use Tomaj\Hermes\Driver\UnknownPriorityException;
@@ -22,7 +24,7 @@ use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tracy\Debugger;
 
-final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterface, ForkableDriverInterface
+final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterface, ForkableDriverInterface, MonitoredStreamInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
@@ -30,6 +32,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     use HeartbeatBehavior;
     use QueueAwareTrait;
     use ForkableDriverTrait;
+    use MonitoredStreamTrait;
 
     private const STREAM_CONSUMERS_GROUP = 'consumers';
     private const MESSAGE_ID_PATTERN = '/[1-9]\d{9,12}-\d+$/';
@@ -42,29 +45,44 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
     private float $refreshInterval;
 
-    private string $myIdentifier;
-
-    public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1)
+    /**
+     * @throws NotSupportedException
+     */
+    public function __construct(RedisProxy $redis, string $key, string $monitorHashRedisKey, int $keepAliveTTL = 60, float $refreshInterval = 1)
     {
         $this->redis = $redis;
         $this->refreshInterval = $refreshInterval;
+        $this->initMonitoredStream($monitorHashRedisKey, Uuid::uuid4()->toString(), $keepAliveTTL);
         $this->serializer = new MessageSerializer();
-        $this->myIdentifier = Uuid::uuid4()->toString();
 
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
     }
 
     public function send(MessageInterface $message, int $priority = Dispatcher::DEFAULT_PRIORITY): bool
     {
-        $key = $this->getKey($priority);
-        $id = $this->redis->rawCommand(
-            'XADD',
-            $key,
-            '*',
-            'body',
-            $this->serializer->serialize($message),
-        );
-        return (bool)preg_match(self::MESSAGE_ID_PATTERN, $id);
+        if ($message->getExecuteAt() === null) {
+            $key = $this->getKey($priority);
+            $id = $this->redis->rawCommand(
+                'XADD',
+                $key,
+                '*',
+                'body',
+                $this->serializer->serialize($message),
+            );
+            return (bool)preg_match(self::MESSAGE_ID_PATTERN, $id);
+        }
+
+        $key = $this->getDelayedQueueKey($priority);
+        try {
+            $result = $this->redis->zadd(
+                $key,
+                (int)floor($message->getExecuteAt() * 1000000),
+                $this->serializer->serialize($message),
+            );
+            return $result === 1;
+        } catch (RedisProxyException $e) {
+            return false;
+        }
     }
 
     public function setupPriorityQueue(string $name, int $priority): void
@@ -77,6 +95,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     /**
      * @throws ShutdownException
      * @throws SerializeException
+     * @throws UnknownPriorityException
      */
     public function wait(Closure $callback, array $priorities): void
     {
@@ -90,26 +109,27 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
         try {
             while (true) {
+                $this->updateEnvelopeStatus();
                 $this->checkShutdown();
                 $this->checkToBeKilled();
                 if (!$this->shouldProcessNext()) {
                     break;
                 }
 
+                $this->processDelayedTasks($priorities);
+
                 $envelope = $this->receiveMessage($queues, $priorities);
                 if ($envelope === null) {
                     continue;
                 }
                 $this->ping(HermesProcess::STATUS_PROCESSING);
-                $this->incrementProcessedItems();
-                $message = $envelope->getMessage();
-                $foundPriority = $this->keyToPriority($envelope->getQueue());
                 $this->doForkProcess(
-                    function () use ($callback, $message, $foundPriority) {
-                        $callback($message, $foundPriority);
+                    function () use ($callback, $envelope) {
+                        $this->monitorEnvelopeCallback($callback, $envelope);
                     }
                 );
-                break;
+                $this->incrementProcessedItems();
+                $this->finishMessage($envelope);
             }
         } finally {
             $accessor->clearTransmissionInfo();
@@ -121,6 +141,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
      * @param array<int, string> $queues
      * @param int[] $priorities
      * @throws SerializeException
+     * @throws UnknownPriorityException
      */
     private function receiveMessage(array $queues, array $priorities): ?StreamMessageEnvelope
     {
@@ -159,8 +180,25 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         return new StreamMessageEnvelope(
             $currentStream,
             $currentId,
+            self::STREAM_CONSUMERS_GROUP,
+            $this->myIdentifier,
             $this->serializer->unserialize($currentBody),
+            $this->keyToPriority($currentStream),
         );
+    }
+
+    private function finishMessage(StreamMessageEnvelope $envelope): void
+    {
+        $queue = $envelope->getQueue();
+        $group = $envelope->getGroup();
+        $id = $envelope->getId();
+
+        try {
+            $this->redis->rawCommand('XACK', $queue, $group, $id);
+            $this->redis->rawCommand('XDEL', $queue, $id);
+        } catch (\Throwable $exception) {
+            Debugger::log($exception, Debugger::EXCEPTION);
+        }
     }
 
     private function setupStreamAndGroup(string $key): void
@@ -233,6 +271,35 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         }
     }
 
+    /**
+     * @param int[] $priorities
+     */
+    private function processDelayedTasks(array $priorities): void
+    {
+        $scriptFile = __DIR__ . '/../Scripts/delayedMessages.lua';
+        $scriptSha = $this->getScriptSha($scriptFile);
+
+        $time = (int)floor(microtime(true) * 1000000);
+
+        foreach ($this->queues as $priority => $queue) {
+            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
+                continue;
+            }
+            try {
+                $keys = [$this->getDelayedQueueKey($priority), $this->getKey($priority)];
+                $this->redis->rawCommand(
+                    'EVALSHA',
+                    $scriptSha,
+                    count($keys),
+                    ...$keys,
+                    ...[$time],
+                );
+            } catch (\Throwable $exception) {
+                Debugger::log($exception, Debugger::EXCEPTION);
+            }
+        }
+    }
+
     private function getScriptSha(string $scriptFile): string
     {
         $scriptSha = sha1_file($scriptFile);
@@ -255,6 +322,17 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             throw new UnknownPriorityException("Unknown priority {$priority}");
         }
         return $this->queues[$priority];
+    }
+
+    /**
+     * @throws UnknownPriorityException
+     */
+    private function getDelayedQueueKey(int $priority): string
+    {
+        if (!isset($this->queues[$priority])) {
+            throw new UnknownPriorityException("Unknown priority {$priority}");
+        }
+        return $this->queues[$priority] . '[delayed]';
     }
 
     /**

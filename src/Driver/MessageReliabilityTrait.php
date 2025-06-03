@@ -68,11 +68,7 @@ trait MessageReliabilityTrait
                 $notify = function () use ($message, $foundPriority) {
                     $this->updateMessageStatus($message, $foundPriority);
                 };
-                $this->commonMainProcess(
-                    $processMessage,
-                    $notify,
-                    $processMessage,
-                );
+                $this->commonMainProcess($processMessage, $notify, $processMessage);
             } else {
                 $callback($message, $foundPriority);
             }
@@ -114,9 +110,11 @@ trait MessageReliabilityTrait
 
         try {
             $encoded = json_encode($status);
-            if ($encoded !== false && $this->keepAliveTTL !== null) {
+            if ($encoded !== false) {
                 $this->redis->hset($this->monitorHashRedisKey, $key, $encoded);
-                $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
+                if ($this->keepAliveTTL !== null) {
+                    $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
+                }
             }
         } catch (Throwable $exception) {
         }

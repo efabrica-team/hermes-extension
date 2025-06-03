@@ -14,7 +14,7 @@ if not groupName or groupName == "" then
 end
 
 -- Try to create group directly first (most common case)
-local createResult = redis.pcall('XGROUP', 'CREATE', streamName, groupName, '$', 'MKSTREAM')
+local createResult = redis.pcall('XGROUP', 'CREATE', streamName, groupName, '0', 'MKSTREAM')
 
 local groupMessage = ""
 -- If successful, we're done with group creation
