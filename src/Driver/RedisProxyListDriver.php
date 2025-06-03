@@ -118,7 +118,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                         $message = $this->serializer->unserialize($messageString);
                         $this->doForkProcess(
                             function () use ($callback, $message, $foundPriority) {
-                                $this->monitorCallback($callback, $message, $foundPriority);
+                                $this->monitorMessageCallback($callback, $message, $foundPriority);
                             }
                         );
                         $this->incrementProcessedItems();
@@ -141,7 +141,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
             }
         } finally {
             $this->removeMessageStatus();
-            $accessor->clearMessageInfo();
+            $accessor->clearTransmissionInfo();
         }
     }
 

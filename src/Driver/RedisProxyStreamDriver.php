@@ -16,7 +16,6 @@ use Tomaj\Hermes\Driver\MaxItemsTrait;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
 use Tomaj\Hermes\Driver\ShutdownTrait;
 use Tomaj\Hermes\Driver\UnknownPriorityException;
-use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
@@ -34,6 +33,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
     private const STREAM_CONSUMERS_GROUP = 'consumers';
     private const MESSAGE_ID_PATTERN = '/[1-9]\d{9,12}-\d+$/';
+    const MILLISECONDS_PER_SECOND = 1000;
 
     /** @var array<int, string> */
     private array $queues = [];
@@ -97,6 +97,9 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                 }
 
                 $envelope = $this->receiveMessage($queues, $priorities);
+                if ($envelope === null) {
+                    continue;
+                }
                 $this->ping(HermesProcess::STATUS_PROCESSING);
                 $this->incrementProcessedItems();
                 $message = $envelope->getMessage();
@@ -109,12 +112,14 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                 break;
             }
         } finally {
+            $accessor->clearTransmissionInfo();
             $this->removeConsumer($priorities);
-            $accessor->clearMessageInfo();
         }
     }
 
     /**
+     * @param array<int, string> $queues
+     * @param int[] $priorities
      * @throws SerializeException
      */
     private function receiveMessage(array $queues, array $priorities): ?StreamMessageEnvelope
@@ -128,7 +133,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         }
         $streams = [];
         if ($this->refreshInterval > 0) {
-            $streams = ['BLOCK', (int)ceil($this->refreshInterval * 1000)];
+            $streams = ['BLOCK', (int)ceil($this->refreshInterval * self::MILLISECONDS_PER_SECOND)];
         }
         $streams = [...$streams, 'STREAMS', ...$activeQueues, ...array_fill(0, count($activeQueues), '>')];
 
@@ -173,6 +178,9 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         );
     }
 
+    /**
+     * @param int[] $priorities
+     */
     private function prepareConsumer(array $priorities): void
     {
         foreach ($this->queues as $priority => $queue) {
@@ -199,6 +207,9 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         }
     }
 
+    /**
+     * @param int[] $priorities
+     */
     private function removeConsumer(array $priorities): void
     {
         $scriptFile = __DIR__ . '/../Scripts/deleteConsumer.lua';

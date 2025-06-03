@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Efabrica\HermesExtension\Driver;
 
+use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use LogicException;
 use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\MessageInterface;
@@ -13,6 +14,8 @@ final class HermesDriverAccessor
     private static ?HermesDriverAccessor $instance = null;
 
     private ?MessageInterface $message = null;
+
+    private ?StreamMessageEnvelope $envelope = null;
 
     private ?int $priority = null;
 
@@ -35,14 +38,25 @@ final class HermesDriverAccessor
         $this->checkWriteAccess();
 
         $this->message = $message;
+        $this->envelope = null;
         $this->priority = $priority;
     }
 
-    public function clearMessageInfo(): void
+    public function setEnvelopeInfo(?StreamMessageEnvelope $envelope, ?int $priority): void
     {
         $this->checkWriteAccess();
 
         $this->message = null;
+        $this->envelope = $envelope;
+        $this->priority = $priority;
+    }
+
+    public function clearTransmissionInfo(): void
+    {
+        $this->checkWriteAccess();
+
+        $this->message = null;
+        $this->envelope = null;
         $this->priority = null;
     }
 
@@ -56,6 +70,11 @@ final class HermesDriverAccessor
     public function getMessage(): ?MessageInterface
     {
         return $this->message;
+    }
+
+    public function getEnvelope(): ?StreamMessageEnvelope
+    {
+        return $this->envelope;
     }
 
     public function getPriority(): ?int
