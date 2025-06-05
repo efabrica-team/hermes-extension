@@ -84,18 +84,22 @@ trait MonitoredStreamTrait
                         $consumer = $consumerData['consumer'];
                         $pending  = $consumerData['pending'];
                         $monitorData = $monitoredConsumers[$consumer] ?? null;
-                        if ($pending === 0 || $monitorData === null) {
+
+                        if ($pending === 0 || $monitorData === null || $monitorData['agent'] === true) {
                             continue;
                         }
+
                         $id = null;
                         $stream = null;
+
                         if (isset($monitoredConsumers[$consumer])) {
                             $id = $monitoredConsumers[$consumer]['body']['id'] ?? null;
                             $stream = $monitoredConsumers[$consumer]['body']['stream'] ?? null;
                         }
+
                         $pendingMessages = $this->getConsumerPendingList($queue, $group, $consumer, $pending + 10, $id);
                         $foundId = false;
-                        // ack and del all pending messages, then delete consumer and monitor
+
                         foreach ($pendingMessages as $pendingMessage) {
                             $messageId = $pendingMessage['id'];
                             $messageDelivered = $pendingMessage['delivered'];
@@ -108,7 +112,9 @@ trait MonitoredStreamTrait
                             $this->redis->rawCommand('XACK', $queue, $group, $messageId);
                             $this->redis->rawCommand('XDEL', $queue, $messageId);
                         }
+
                         $claimedMessage = null;
+
                         if ($foundId && $id !== null) {
                             $claimedMessage = $this->redis->rawCommand(
                                 'XCLAIM',
@@ -120,8 +126,12 @@ trait MonitoredStreamTrait
                             );
                             $claimedMessage = count($claimedMessage ?? []) === 0 ? null : $claimedMessage[0];
                         }
+
                         $this->redis->rawCommand('XGROUP', 'DELCONSUMER', $queue, $group, $consumer);
                         $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
+                        $statusKey = $this->getStatusKey($monitorData['field']);
+                        $this->redis->del($statusKey);
+
                         if ($claimedMessage !== null) {
                             $this->updateEnvelopeStatus();
                             $messageId = $claimedMessage[0];
