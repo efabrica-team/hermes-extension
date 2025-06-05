@@ -96,6 +96,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
      * @throws ShutdownException
      * @throws SerializeException
      * @throws UnknownPriorityException
+     * @throws RedisProxyException
      */
     public function wait(Closure $callback, array $priorities): void
     {

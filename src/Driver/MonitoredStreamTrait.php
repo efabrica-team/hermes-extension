@@ -236,7 +236,7 @@ trait MonitoredStreamTrait
     private function readMonitorTable(): array
     {
         $table = [];
-        $cursor = 0;
+        $cursor = null;
         $pattern = '/^\[(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/i';
 
         do {
