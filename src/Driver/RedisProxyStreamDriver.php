@@ -143,6 +143,12 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     throw $exception;
                 }
                 $this->ping(HermesProcess::STATUS_IDLE);
+
+                if ($this->refreshInterval) {
+                    $this->checkShutdown();
+                    $this->checkToBeKilled();
+                    usleep(intval($this->refreshInterval) * 1000000);
+                }
             }
         } catch (ShutdownException $exception) {
             $this->ping(HermesProcess::STATUS_KILLED);
@@ -165,39 +171,40 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         if ($envelope !== null) {
             return $envelope;
         }
-        $streams = [];
-        if ($this->refreshInterval > 0) {
-            $streams = ['BLOCK', (int)ceil($this->refreshInterval * self::MILLISECONDS_PER_SECOND)];
+        foreach ($queues as $queue) {
+            $streams = [];
+            $streams = [...$streams, 'STREAMS', $queue, '>'];
+
+            $message = $this->redis->rawCommand(
+                'XREADGROUP',
+                'GROUP',
+                self::STREAM_CONSUMERS_GROUP,
+                $this->myIdentifier,
+                'COUNT',
+                1,
+                ...$streams,
+            );
+
+            if (!is_array($message) || count($message) !== 1) {
+                continue;
+            }
+
+            $message = $message[0];
+            $currentStream = $message[0];
+            $currentId = $message[1][0][0];
+            $currentBody = $message[1][0][1][1];
+
+            return new StreamMessageEnvelope(
+                $currentStream,
+                $currentId,
+                self::STREAM_CONSUMERS_GROUP,
+                $this->myIdentifier,
+                $this->serializer->unserialize($currentBody),
+                $this->keyToPriority($currentStream),
+            );
         }
-        $streams = [...$streams, 'STREAMS', ...$queues, ...array_fill(0, count($queues), '>')];
 
-        $message = $this->redis->rawCommand(
-            'XREADGROUP',
-            'GROUP',
-            self::STREAM_CONSUMERS_GROUP,
-            $this->myIdentifier,
-            'COUNT',
-            1,
-            ...$streams,
-        );
-
-        if (!is_array($message) || count($message) !== 1) {
-            return null;
-        }
-
-        $message = $message[0];
-        $currentStream = $message[0];
-        $currentId = $message[1][0][0];
-        $currentBody = $message[1][0][1][1];
-
-        return new StreamMessageEnvelope(
-            $currentStream,
-            $currentId,
-            self::STREAM_CONSUMERS_GROUP,
-            $this->myIdentifier,
-            $this->serializer->unserialize($currentBody),
-            $this->keyToPriority($currentStream),
-        );
+        return null;
     }
 
     private function finishMessage(StreamMessageEnvelope $envelope): void
