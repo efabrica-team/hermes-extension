@@ -124,25 +124,25 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                 $this->processDelayedTasks($queues);
 
                 $envelope = $this->receiveMessage($queues);
-                if ($envelope === null) {
+                if ($envelope !== null) {
+                    $this->ping(HermesProcess::STATUS_PROCESSING);
+                    $this->incrementProcessedItems();
+                    try {
+                        $this->doForkProcess(
+                            function () use ($callback, $envelope) {
+                                $this->monitorEnvelopeCallback($callback, $envelope);
+                            }
+                        );
+                        $this->finishMessage($envelope);
+                        $this->updateEnvelopeStatus();
+                    } catch (ShutdownException $exception) {
+                        $this->finishMessage($envelope);
+                        $this->updateEnvelopeStatus();
+                        throw $exception;
+                    }
+                    $this->ping(HermesProcess::STATUS_IDLE);
                     continue;
                 }
-                $this->ping(HermesProcess::STATUS_PROCESSING);
-                $this->incrementProcessedItems();
-                try {
-                    $this->doForkProcess(
-                        function () use ($callback, $envelope) {
-                            $this->monitorEnvelopeCallback($callback, $envelope);
-                        }
-                    );
-                    $this->finishMessage($envelope);
-                    $this->updateEnvelopeStatus();
-                } catch (ShutdownException $exception) {
-                    $this->finishMessage($envelope);
-                    $this->updateEnvelopeStatus();
-                    throw $exception;
-                }
-                $this->ping(HermesProcess::STATUS_IDLE);
 
                 if ($this->refreshInterval) {
                     $this->checkShutdown();
