@@ -107,6 +107,9 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         $this->prepareConsumer($queues);
 
         try {
+            if (count($queues) === 0) {
+                return;
+            }
             while (true) {
                 $this->updateEnvelopeStatus();
                 $this->checkShutdown();
@@ -362,11 +365,15 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     {
         $queues = $this->queues;
         krsort($queues);
-        $queues = array_filter(
+
+        if (count($priorities) === 0) {
+            return $queues;
+        }
+
+        return array_filter(
             $queues,
             static fn (int $priority): bool => in_array($priority, $priorities, true),
             ARRAY_FILTER_USE_KEY,
         );
-        return $queues;
     }
 }
