@@ -3,11 +3,13 @@
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
+use Efabrica\HermesExtension\Helpers\RedisResponse;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
 use Throwable;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
+use Tomaj\Hermes\Message;
 use Tracy\Debugger;
 
 /**
@@ -47,8 +49,11 @@ trait MonitoredStreamTrait
      */
     private $myPID = 0;
 
-    private function initMonitoredStream(string $monitorHashRedisKey, string $myIdentifier, int $keepAliveTTL = 60): void
-    {
+    private function initMonitoredStream(
+        string $monitorHashRedisKey,
+        string $myIdentifier,
+        int $keepAliveTTL = 60
+    ): void {
         $this->myIdentifier = $myIdentifier;
         $this->monitorHashRedisKey = $monitorHashRedisKey;
         $this->keepAliveTTL = $keepAliveTTL;
@@ -62,7 +67,7 @@ trait MonitoredStreamTrait
     private function claimPendingMessage(array $queues, string $group): ?StreamMessageEnvelope
     {
         $lockKey = sprintf(
-            '%s:lock',
+            '%s:lockClaiming',
             $this->monitorHashRedisKey,
         );
 
@@ -157,6 +162,131 @@ trait MonitoredStreamTrait
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, string> $queues
+     * @throws RedisProxyException
+     */
+    private function doMonitoringTasks(array $queues, string $group): void
+    {
+        $lockKey = sprintf(
+            '%s:lockMonitoring',
+            $this->monitorHashRedisKey,
+        );
+
+        $locked = (bool)$this->redis->rawCommand(
+            'SET',
+            $lockKey,
+            $this->myIdentifier,
+            'NX',
+            'EX',
+            MonitoredStreamInterface::LOCK_TTL,
+        );
+
+        if ($locked) {
+            try {
+                $allConsumers = $this->getAllRegisteredConsumers($queues, $group);
+                $monitoredConsumers = $this->readMonitorTable();
+                foreach ($queues as $queue) {
+                    $consumers = $allConsumers[$queue] ?? [];
+                    foreach ($consumers as $consumerUUID => $consumerData) {
+                        $monitorData = $monitoredConsumers[$consumerUUID] ?? null;
+                        if ($monitorData === null) {
+                            $pendingMessages = $this->getConsumerPendingList(
+                                $queue, $group, $consumerUUID, $consumerData['pending'] + 10,
+                            );
+                            foreach ($pendingMessages as $pendingMessage) {
+                                $messageId = $pendingMessage['id'];
+                                $this->redis->rawCommand('XACK', $queue, $group, $messageId);
+                                $this->redis->rawCommand('XDEL', $queue, $messageId);
+                            }
+                            $this->redis->rawCommand(
+                                'XGROUP', 'DELCONSUMER', $queue, $group, $consumerUUID,
+                            );
+                            continue;
+                        }
+                        if ($monitorData['agent'] === true) {
+                            $id = null;
+                            $stream = null;
+
+                            if (isset($monitoredConsumers[$consumerUUID])) {
+                                $id = $monitoredConsumers[$consumerUUID]['body']['id'] ?? null;
+                                $stream = $monitoredConsumers[$consumerUUID]['body']['stream'] ?? null;
+                            }
+
+                            $pendingMessages = $this->getConsumerPendingList(
+                                $queue, $group, $consumerUUID, $consumerData['pending'] + 10, $id,
+                            );
+
+                            if (count($pendingMessages) > 1) {
+                                $hasMonitoredMessage = false;
+                                foreach ($pendingMessages as $pendingMessage) {
+                                    $messageId = $pendingMessage['id'];
+                                    if ($messageId === $id && $stream === $queue) {
+                                        $hasMonitoredMessage = true;
+                                    }
+                                }
+                                if ($hasMonitoredMessage) {
+                                    foreach ($pendingMessages as $pendingMessage) {
+                                        $messageId = $pendingMessage['id'];
+                                        if ($messageId === $id && $stream === $queue) {
+                                            continue;
+                                        }
+                                        $this->redis->rawCommand('XACK', $queue, $group, $messageId);
+                                        $this->redis->rawCommand('XDEL', $queue, $messageId);
+                                    }
+                                }
+                            }
+
+                            continue;
+                        }
+                        if ($consumerData['pending'] > 0) {
+                            continue;
+                        }
+                        $this->redis->rawCommand(
+                            'XGROUP', 'DELCONSUMER', $queue, $group, $consumerUUID,
+                        );
+                        $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
+                        $statusKey = $this->getStatusKey($monitorData['field']);
+                        $this->redis->del($statusKey);
+                    }
+                }
+                foreach ($monitoredConsumers as $consumerUUID => $monitorData) {
+                    $consumerFound = false;
+                    foreach ($queues as $queue) {
+                        if (isset($allConsumers[$queue][$consumerUUID])) {
+                            $consumerFound = true;
+                            break;
+                        }
+                    }
+                    if ($consumerFound) {
+                        continue;
+                    }
+                    $message = $monitorData['body']['message'] ?? null;
+                    $priority = $monitorData['body']['priority'] ?? null;
+                    if ($message !== null && $priority !== null) {
+                        $encodedMessage = json_encode($message);
+                        if ($encodedMessage !== false) {
+                            try {
+                                $message = $this->serializer->unserialize($encodedMessage);
+                                $this->send($message, $priority);
+                            } catch (Throwable $exception) {
+                                Debugger::log($exception, Debugger::EXCEPTION);
+                            }
+                        }
+                    }
+                    $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
+                    $statusKey = $this->getStatusKey($monitorData['field']);
+                    $this->redis->del($statusKey);
+                }
+            } finally {
+                try {
+                    $this->redis->del($lockKey);
+                } catch (Throwable $e) {
+                }
+            }
+        }
     }
 
     /**
@@ -275,6 +405,38 @@ trait MonitoredStreamTrait
         } while ($cursor !== 0);
 
         return $table;
+    }
+
+    /**
+     * @internal Do not use this method outside trait!
+     * @param array<int, string> $queues
+     * @return array<string, array<string, array{name: string, pending: int, idle: int|null, inactive: int}>>
+     */
+    private function getAllRegisteredConsumers(array $queues, string $group): array
+    {
+        $output = [];
+        foreach ($queues as $queue) {
+            $consumers = $this->redis->rawCommand(
+                'XINFO',
+                'CONSUMERS',
+                $queue,
+                $group,
+            );
+
+            foreach ($consumers as $consumer) {
+                $parsedConsumer = RedisResponse::readRedisListResponseToArray($consumer);
+                if (!isset($parsedConsumer['inactive']) && isset($parsedConsumer['idle'])) {
+                    // Redis < 7.2.0, idle is inactive
+                    $parsedConsumer['inactive'] = $parsedConsumer['idle'];
+                    $parsedConsumer['idle'] = null;
+                }
+                if (!isset($parsedConsumer['name'])) {
+                    continue;
+                }
+                $output[$queue][$parsedConsumer['name']] = $parsedConsumer;
+            }
+        }
+        return $output;
     }
 
     private function monitorEnvelopeCallback(Closure $callback, StreamMessageEnvelope $envelope): void

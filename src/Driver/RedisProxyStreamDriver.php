@@ -119,6 +119,8 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     break;
                 }
 
+                $this->doMonitoringTasks($queues, self::STREAM_CONSUMERS_GROUP);
+
                 $this->processDelayedTasks($queues);
 
                 $envelope = $this->receiveMessage($queues);
