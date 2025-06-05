@@ -5,10 +5,33 @@ namespace Efabrica\HermesExtension\Driver;
 use Closure;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use RedisProxy\RedisProxy;
+use RedisProxy\RedisProxyException;
 use Throwable;
+use Tomaj\Hermes\Driver\SerializerAwareTrait;
+use Tracy\Debugger;
 
+/**
+ * @phpstan-type Monitor array{
+ *     timestamp: float,
+ *     message: null|array{
+ *         id: string,
+ *         type: string,
+ *         payload: mixed,
+ *         execute_at: null|float,
+ *         retries: int,
+ *         created: float,
+ *     },
+ *     priority: null|int,
+ *     id: null|string,
+ *     stream: null|string,
+ *     group: null|string,
+ *     consumer: null|string,
+ *     identity: string,
+ * }
+ */
 trait MonitoredStreamTrait
 {
+    use SerializerAwareTrait;
     use MessageMultiprocessingTrait;
 
     private string $monitorHashRedisKey;
@@ -30,6 +53,218 @@ trait MonitoredStreamTrait
         $this->monitorHashRedisKey = $monitorHashRedisKey;
         $this->keepAliveTTL = $keepAliveTTL;
         $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
+    }
+
+    /**
+     * @param array<int, string> $queues
+     * @throws RedisProxyException
+     */
+    private function claimPendingMessage(array $queues, string $group): ?StreamMessageEnvelope
+    {
+        $lockKey = sprintf(
+            '%s:lock',
+            $this->monitorHashRedisKey,
+        );
+
+        $locked = (bool)$this->redis->rawCommand(
+            'SET',
+            $lockKey,
+            $this->myIdentifier,
+            'NX',
+            'EX',
+            MonitoredStreamInterface::LOCK_TTL,
+        );
+
+        if ($locked) {
+            try {
+                $monitoredConsumers = $this->readMonitorTable();
+                $queuedConsumers = $this->getConsumersOfPendingMessages($queues, $group);
+                foreach ($queues as $priority => $queue) {
+                    foreach ($queuedConsumers[$queue] ?? [] as $consumerData) {
+                        $consumer = $consumerData['consumer'];
+                        $pending  = $consumerData['pending'];
+                        $monitorData = $monitoredConsumers[$consumer] ?? null;
+                        if ($pending === 0 || $monitorData === null) {
+                            continue;
+                        }
+                        $id = null;
+                        $stream = null;
+                        if (isset($monitoredConsumers[$consumer])) {
+                            $id = $monitoredConsumers[$consumer]['body']['id'] ?? null;
+                            $stream = $monitoredConsumers[$consumer]['body']['stream'] ?? null;
+                        }
+                        $pendingMessages = $this->getConsumerPendingList($queue, $group, $consumer, $pending + 10, $id);
+                        $foundId = false;
+                        // ack and del all pending messages, then delete consumer and monitor
+                        foreach ($pendingMessages as $pendingMessage) {
+                            $messageId = $pendingMessage['id'];
+                            $messageDelivered = $pendingMessage['delivered'];
+                            if ($id !== null && $stream === $queue && $messageId === $id
+                                && $messageDelivered <= MonitoredStreamInterface::REQUEUE_REPEATS
+                            ) {
+                                $foundId = true;
+                                continue;
+                            }
+                            $this->redis->rawCommand('XACK', $queue, $group, $messageId);
+                            $this->redis->rawCommand('XDEL', $queue, $messageId);
+                        }
+                        $claimedMessage = null;
+                        if ($foundId && $id !== null) {
+                            $claimedMessage = $this->redis->rawCommand(
+                                'XCLAIM',
+                                $queue,
+                                $group,
+                                $this->myIdentifier,
+                                0,
+                                $id,
+                            );
+                            $claimedMessage = count($claimedMessage ?? []) === 0 ? null : $claimedMessage[0];
+                        }
+                        $this->redis->rawCommand('XGROUP', 'DELCONSUMER', $queue, $group, $consumer);
+                        $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
+                        if ($claimedMessage !== null) {
+                            $this->updateEnvelopeStatus();
+                            $messageId = $claimedMessage[0];
+                            $messageBody = $claimedMessage[1][1];
+
+                            return new StreamMessageEnvelope(
+                                $queue,
+                                $messageId,
+                                $group,
+                                $this->myIdentifier,
+                                $this->serializer->unserialize($messageBody),
+                                $priority,
+                            );
+                        }
+                    }
+                }
+            } finally {
+                try {
+                    $this->redis->del($lockKey);
+                } catch (Throwable $e) {
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @internal Do not use this method outside trait!
+     * @param array<int, string> $queues
+     * @return array<string, array<array{consumer: string, pending: int}>>
+     */
+    private function getConsumersOfPendingMessages(array $queues, string $group): array
+    {
+        $output = [];
+        foreach ($queues as $queue) {
+            $pending = $this->redis->rawCommand('XPENDING', $queue, $group);
+
+            if (count($pending) === 0) {
+                continue;
+            }
+
+            $count = (int)$pending[0];
+
+            if ($count === 0) {
+                continue;
+            }
+
+            if (count($pending) !== 4) {
+                continue;
+            }
+
+            $consumers = $pending[3];
+
+            foreach ($consumers as $consumer) {
+                if (count($consumer) !== 2 || !is_string($consumer[0]) || !is_int($consumer[1])) {
+                    continue;
+                }
+
+                $output[$queue][] = ['consumer' => $consumer[0], 'pending' => $consumer[1]];
+            }
+        }
+        return $output;
+    }
+
+    /**
+     * @internal Do not use this method outside trait!
+     * @return array<array{id: string, consumer: string, pending: int, delivered: int}>
+     */
+    private function getConsumerPendingList(
+        string $queue,
+        string $group,
+        string $consumer,
+        int $count,
+        ?string $id = null
+    ): array {
+        $pending = $this->redis->rawCommand(
+            'XPENDING',
+            $queue,
+            $group,
+            '-',
+            '+',
+            $count,
+            $consumer,
+        );
+        $output = [];
+        foreach ($pending as $message) {
+            if (count($message) !== 4) {
+                continue;
+            }
+            $output[] = [
+                'id' => $message[0],
+                'consumer' => $message[1],
+                'pending' => (int)$message[2],
+                'delivered' => (int)$message[3],
+            ];
+        }
+        if ($id !== null) {
+            usort($output, function ($a, $b) use ($id) {
+                if ($a['id'] === $id) return -1;
+                if ($b['id'] === $id) return 1;
+                return 0;
+            });
+        }
+        return $output;
+    }
+
+    /**
+     * @internal Do not use this method outside trait!
+     * @return array<string, array{field: string, body: Monitor, agent: bool}>
+     */
+    private function readMonitorTable(): array
+    {
+        $table = [];
+        $cursor = 0;
+        $pattern = '/^\[(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]/i';
+
+        do {
+            try {
+                $fields = $this->redis->hscan($this->monitorHashRedisKey, $cursor, null, 1000);
+                if (!is_array($fields)) {
+                    continue;
+                }
+                foreach ($fields as $field => $value) {
+                    if (!preg_match($pattern, $field, $matches)) {
+                        continue;
+                    }
+                    $consumerUUID = $matches['uuid'];
+                    $agentKey = $this->getAgentKey($field);
+                    $agent = $this->redis->exists($agentKey);
+                    $valueArray = json_decode($value, true);
+                    $table[$consumerUUID] = [
+                        'field' => $field,
+                        'body' => $valueArray,
+                        'agent' => $agent,
+                    ];
+                }
+            } catch (Throwable $exception) {
+                Debugger::log($exception, Debugger::EXCEPTION);
+            }
+        } while ($cursor !== 0);
+
+        return $table;
     }
 
     private function monitorEnvelopeCallback(Closure $callback, StreamMessageEnvelope $envelope): void
@@ -57,12 +292,16 @@ trait MonitoredStreamTrait
     /**
      * Writes data about currently processed envelope
      */
-    public function updateEnvelopeStatus(?StreamMessageEnvelope $envelope = null): void
+    public function updateEnvelopeStatus(?StreamMessageEnvelope $envelope = null, bool $onlyIfNotExists = false): bool
     {
         $this->checkWriteAccess();
 
         $key = $this->getMyKey();
         $agentKey = $this->getAgentKey($key);
+
+        if ($onlyIfNotExists && $this->redis->hexists($this->monitorHashRedisKey, $key)) {
+            return false;
+        }
 
         $status = (object)[
             'timestamp' => microtime(true),
@@ -81,6 +320,7 @@ trait MonitoredStreamTrait
             'stream' => $envelope === null ? null : $envelope->getQueue(),
             'group' => $envelope === null ? null : $envelope->getGroup(),
             'consumer' => $envelope === null ? null : $envelope->getConsumer(),
+            'identity' => $this->myIdentifier,
         ];
 
         try {
@@ -90,7 +330,9 @@ trait MonitoredStreamTrait
                 $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
             }
         } catch (Throwable $exception) {
+            return false;
         }
+        return true;
     }
 
     /**

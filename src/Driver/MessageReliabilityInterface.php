@@ -11,7 +11,6 @@ interface MessageReliabilityInterface
 {
     const LOCK_TTL = 60;
     const LOCK_TIME_DIFF_MAX = 59000000000;
-
     const REQUEUE_REPEATS = 3;
 
     public function enableReliableMessageHandling(string $monitorKeyPrefix, EmitterInterface $emitter, int $keepAliveTTL): void;

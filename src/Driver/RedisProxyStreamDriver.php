@@ -102,10 +102,9 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         $accessor = HermesDriverAccessor::getInstance();
         $accessor->setDriver($this);
 
-        $queues = $this->queues;
-        krsort($queues);
+        $queues = $this->getFilteredQueues($priorities);
 
-        $this->prepareConsumer($priorities);
+        $this->prepareConsumer($queues);
 
         try {
             while (true) {
@@ -116,47 +115,55 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     break;
                 }
 
-                $this->processDelayedTasks($priorities);
+                $this->processDelayedTasks($queues);
 
-                $envelope = $this->receiveMessage($queues, $priorities);
+                $envelope = $this->receiveMessage($queues);
                 if ($envelope === null) {
                     continue;
                 }
                 $this->ping(HermesProcess::STATUS_PROCESSING);
-                $this->doForkProcess(
-                    function () use ($callback, $envelope) {
-                        $this->monitorEnvelopeCallback($callback, $envelope);
-                    }
-                );
                 $this->incrementProcessedItems();
-                $this->finishMessage($envelope);
+                try {
+                    $this->doForkProcess(
+                        function () use ($callback, $envelope) {
+                            $this->monitorEnvelopeCallback($callback, $envelope);
+                        }
+                    );
+                    $this->finishMessage($envelope);
+                    $this->updateEnvelopeStatus();
+                } catch (ShutdownException $exception) {
+                    $this->finishMessage($envelope);
+                    $this->updateEnvelopeStatus();
+                    throw $exception;
+                }
+                $this->ping(HermesProcess::STATUS_IDLE);
             }
+        } catch (ShutdownException $exception) {
+            $this->ping(HermesProcess::STATUS_KILLED);
+            throw $exception;
         } finally {
             $accessor->clearTransmissionInfo();
-            $this->removeConsumer($priorities);
+            $this->removeConsumer($queues);
         }
     }
 
     /**
      * @param array<int, string> $queues
-     * @param int[] $priorities
      * @throws SerializeException
      * @throws UnknownPriorityException
+     * @throws RedisProxyException
      */
-    private function receiveMessage(array $queues, array $priorities): ?StreamMessageEnvelope
+    private function receiveMessage(array $queues): ?StreamMessageEnvelope
     {
-        $activeQueues = [];
-        foreach ($queues as $priority => $queue) {
-            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
-                continue;
-            }
-            $activeQueues[$priority] = $queue;
+        $envelope = $this->claimPendingMessage($queues, self::STREAM_CONSUMERS_GROUP);
+        if ($envelope !== null) {
+            return $envelope;
         }
         $streams = [];
         if ($this->refreshInterval > 0) {
             $streams = ['BLOCK', (int)ceil($this->refreshInterval * self::MILLISECONDS_PER_SECOND)];
         }
-        $streams = [...$streams, 'STREAMS', ...$activeQueues, ...array_fill(0, count($activeQueues), '>')];
+        $streams = [...$streams, 'STREAMS', ...$queues, ...array_fill(0, count($queues), '>')];
 
         $message = $this->redis->rawCommand(
             'XREADGROUP',
@@ -217,14 +224,18 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     }
 
     /**
-     * @param int[] $priorities
+     * @param array<int, string> $queues
      */
-    private function prepareConsumer(array $priorities): void
+    private function prepareConsumer(array $queues): void
     {
-        foreach ($this->queues as $priority => $queue) {
-            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
-                continue;
-            }
+        if (!$this->updateEnvelopeStatus(null, true)) {
+            throw new \RuntimeException(
+                'Consumer %s already exists in driver monitor hash %s!',
+                $this->myIdentifier,
+                $this->monitorHashRedisKey,
+            );
+        }
+        foreach ($queues as $queue) {
             $result = $this->redis->rawCommand(
                 'XGROUP',
                 'CREATECONSUMER',
@@ -246,17 +257,14 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     }
 
     /**
-     * @param int[] $priorities
+     * @param array<int, string> $queues
      */
-    private function removeConsumer(array $priorities): void
+    private function removeConsumer(array $queues): void
     {
         $scriptFile = __DIR__ . '/../Scripts/deleteConsumer.lua';
         $scriptSha = $this->getScriptSha($scriptFile);
 
-        foreach ($this->queues as $priority => $queue) {
-            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
-                continue;
-            }
+        foreach ($queues as $queue) {
             try {
                 $keys = [$queue, self::STREAM_CONSUMERS_GROUP, $this->myIdentifier];
                 $this->redis->rawCommand(
@@ -272,21 +280,18 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     }
 
     /**
-     * @param int[] $priorities
+     * @param array<int, string> $queues
      */
-    private function processDelayedTasks(array $priorities): void
+    private function processDelayedTasks(array $queues): void
     {
         $scriptFile = __DIR__ . '/../Scripts/delayedMessages.lua';
         $scriptSha = $this->getScriptSha($scriptFile);
 
         $time = (int)floor(microtime(true) * 1000000);
 
-        foreach ($this->queues as $priority => $queue) {
-            if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
-                continue;
-            }
+        foreach ($queues as $priority => $queue) {
             try {
-                $keys = [$this->getDelayedQueueKey($priority), $this->getKey($priority)];
+                $keys = [$this->getDelayedQueueKey($priority), $queue];
                 $this->redis->rawCommand(
                     'EVALSHA',
                     $scriptSha,
@@ -347,5 +352,21 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         }
 
         throw new UnknownPriorityException("Unknown queue {$key}, priority can't be determined");
+    }
+
+    /**
+     * @param int[] $priorities
+     * @return array<int, string>
+     */
+    private function getFilteredQueues(array $priorities): array
+    {
+        $queues = $this->queues;
+        krsort($queues);
+        $queues = array_filter(
+            $queues,
+            static fn (int $priority): bool => in_array($priority, $priorities, true),
+            ARRAY_FILTER_USE_KEY,
+        );
+        return $queues;
     }
 }

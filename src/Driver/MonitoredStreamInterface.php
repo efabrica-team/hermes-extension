@@ -6,7 +6,10 @@ use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 
 interface MonitoredStreamInterface
 {
-    public function updateEnvelopeStatus(?StreamMessageEnvelope $envelope = null): void;
+    const LOCK_TTL = 60;
+    const REQUEUE_REPEATS = 3;
+
+    public function updateEnvelopeStatus(?StreamMessageEnvelope $envelope = null, bool $onlyIfNotExists = false): bool;
 
     public function updateEnvelopeProcessingStatus(?string $status = null, ?float $percent = null): void;
 }
