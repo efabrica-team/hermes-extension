@@ -266,7 +266,7 @@ trait MonitoredStreamTrait
                     $message = $monitorData['body']['message'] ?? null;
                     $priority = $monitorData['body']['priority'] ?? null;
                     if ($message !== null && $priority !== null) {
-                        $encodedMessage = json_encode($message);
+                        $encodedMessage = json_encode(['message' => $message]);
                         if ($encodedMessage !== false) {
                             try {
                                 $message = $this->serializer->unserialize($encodedMessage);
