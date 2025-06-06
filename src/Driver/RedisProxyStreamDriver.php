@@ -123,6 +123,8 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         if (extension_loaded('pcntl')) {
             pcntl_signal(SIGTERM, $signalHandler);
             pcntl_signal(SIGINT, $signalHandler);
+            pcntl_signal(SIGQUIT, $signalHandler);
+            pcntl_signal(SIGHUP, $signalHandler);
         }
 
         $accessor = HermesDriverAccessor::getInstance();
