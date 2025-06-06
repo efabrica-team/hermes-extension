@@ -23,7 +23,6 @@ use Tomaj\Hermes\Driver\ShutdownTrait;
 use Tomaj\Hermes\Driver\UnknownPriorityException;
 use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
-use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tracy\Debugger;
 
@@ -96,7 +95,6 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
     /**
      * @throws ShutdownException
-     * @throws SerializeException
      * @throws UnknownPriorityException
      * @throws RedisProxyException
      */
