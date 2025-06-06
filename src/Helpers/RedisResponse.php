@@ -14,7 +14,7 @@ final class RedisResponse
     {
         $output = [];
         for ($i = 0; $i < count($listResponse); $i += 2) {
-            $key = $listResponse[$i];
+            $key = (string)$listResponse[$i];
             $value = self::decodeValue($listResponse[$i + 1]);
             $output[$key] = $value;
         }
@@ -23,7 +23,7 @@ final class RedisResponse
 
     /**
      * @param mixed $value
-     * @return float|int|mixed
+     * @return float|int|string|bool|null
      */
     private static function decodeValue($value)
     {
