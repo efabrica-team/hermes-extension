@@ -236,7 +236,7 @@ trait MonitoredStreamTrait
                                 0,
                                 $id,
                             );
-                            $claimedMessage = count($claimedMessage ?? []) === 0 ? null : $claimedMessage[0];
+                            $claimedMessage = count($claimedMessage) === 0 ? null : $claimedMessage[0];
                         }
 
                         $this->redis->rawCommand('XGROUP', 'DELCONSUMER', $queue, $group, $consumer);
@@ -435,30 +435,22 @@ trait MonitoredStreamTrait
     {
         $output = [];
         foreach ($queues as $queue) {
+            /** @var array{
+             *     0: int|string,
+             *     1: null|string,
+             *     2: null|string,
+             *     3: null|array<array{0: string, 1: int|string}>,
+             * } $pending */
             $pending = $this->redis->rawCommand('XPENDING', $queue, $group);
 
-            if (count($pending) === 0) {
-                continue;
-            }
-
-            $count = (int)$pending[0];
-
-            if ($count === 0) {
-                continue;
-            }
-
-            if (count($pending) !== 4) {
+            if ((int)$pending[0] === 0) {
                 continue;
             }
 
             $consumers = $pending[3];
 
-            foreach ($consumers as $consumer) {
-                if (count($consumer) !== 2 || !is_string($consumer[0]) || !is_int($consumer[1])) {
-                    continue;
-                }
-
-                $output[$queue][] = ['consumer' => $consumer[0], 'pending' => $consumer[1]];
+            foreach ($consumers ?? [] as $consumer) {
+                $output[$queue][] = ['consumer' => $consumer[0], 'pending' => (int)$consumer[1]];
             }
         }
         return $output;
