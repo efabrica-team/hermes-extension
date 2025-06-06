@@ -220,7 +220,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
             $fields = RedisResponse::readRedisListResponseToArray($message[1][0][1]);
 
-            if (!isset($fields['body'])) {
+            if (!isset($fields['body']) || !is_string($fields['body'])) {
                 // this message does not have a body, it is malformed, delete it
                 $this->redis->rawCommand('XACK', $currentStream, self::STREAM_CONSUMERS_GROUP, $currentId);
                 $this->redis->rawCommand('XDEL', $currentStream, $currentId);
@@ -272,7 +272,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
         $keys = [$key, self::STREAM_CONSUMERS_GROUP];
 
-        [$result, $message] = $this->redis->rawCommand(
+        $this->redis->rawCommand(
             'EVALSHA',
             $scriptSha,
             count($keys),
@@ -295,6 +295,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             );
         }
         foreach ($queues as $queue) {
+            /** @var int|string $result */
             $result = $this->redis->rawCommand(
                 'XGROUP',
                 'CREATECONSUMER',
@@ -368,9 +369,12 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     {
         $scriptSha = sha1_file($scriptFile);
 
-        $result = (bool)(int)$this->redis->rawCommand('SCRIPT', 'EXISTS', $scriptSha)[0];
+        /** @var array<int|string> $result */
+        $result = $this->redis->rawCommand('SCRIPT', 'EXISTS', $scriptSha);
+        $result = (bool)(int)$result[0];
 
         if (!$result) {
+            /** @var string $scriptSha */
             $scriptSha = $this->redis->rawCommand('SCRIPT', 'LOAD', file_get_contents($scriptFile));
         }
 

@@ -22,7 +22,7 @@ final class RedisResponse
     }
 
     /**
-     * @param mixed $value
+     * @param float|int|string|bool|null $value
      * @return float|int|string|bool|null
      */
     private static function decodeValue($value)
