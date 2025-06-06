@@ -467,6 +467,14 @@ trait MonitoredStreamTrait
         int $count,
         ?string $id = null
     ): array {
+        /**
+         * @var array<array{
+         *     0: string,
+         *     1: string,
+         *     2: int|string,
+         *     3: int|string,
+         * }> $pending
+         */
         $pending = $this->redis->rawCommand(
             'XPENDING',
             $queue,
@@ -478,9 +486,6 @@ trait MonitoredStreamTrait
         );
         $output = [];
         foreach ($pending as $message) {
-            if (count($message) !== 4) {
-                continue;
-            }
             $output[] = [
                 'id' => $message[0],
                 'consumer' => $message[1],
