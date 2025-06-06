@@ -519,6 +519,7 @@ trait MonitoredStreamTrait
 
         do {
             try {
+                /** @var array<string, string>|bool|null $fields */
                 $fields = $this->redis->hscan($this->monitorHashRedisKey, $cursor, null, 1000);
                 if (!is_array($fields)) {
                     continue;
@@ -530,6 +531,7 @@ trait MonitoredStreamTrait
                     $consumerUUID = $matches['uuid'];
                     $agentKey = $this->getAgentKey($field);
                     $agent = $this->redis->exists($agentKey);
+                    /** @var Monitor $valueArray */
                     $valueArray = json_decode($value, true);
                     $table[$consumerUUID] = [
                         'field' => $field,
@@ -554,6 +556,7 @@ trait MonitoredStreamTrait
     {
         $output = [];
         foreach ($queues as $queue) {
+            /** @var array<array<int, string|int>> $consumers */
             $consumers = $this->redis->rawCommand(
                 'XINFO',
                 'CONSUMERS',
