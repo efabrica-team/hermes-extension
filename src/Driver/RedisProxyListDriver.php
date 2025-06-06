@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
+use Efabrica\HermesExtension\Driver\Interfaces\ForkableDriverInterface;
+use Efabrica\HermesExtension\Driver\Interfaces\MessageReliabilityInterface;
+use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
+use Efabrica\HermesExtension\Driver\Traits\ForkableDriverTrait;
+use Efabrica\HermesExtension\Driver\Traits\MessageReliabilityTrait;
+use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
 use RedisProxy\RedisProxy;

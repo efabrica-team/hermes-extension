@@ -1,6 +1,6 @@
 <?php
 
-namespace Efabrica\HermesExtension\Driver;
+namespace Efabrica\HermesExtension\Driver\Interfaces;
 
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 

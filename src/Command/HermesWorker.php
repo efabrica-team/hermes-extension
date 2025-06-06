@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Efabrica\HermesExtension\Command;
 
-use Efabrica\HermesExtension\Driver\QueueAwareInterface;
+use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
 use ReflectionObject;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;

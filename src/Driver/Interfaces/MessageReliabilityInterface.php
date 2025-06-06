@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Efabrica\HermesExtension\Driver;
+namespace Efabrica\HermesExtension\Driver\Interfaces;
 
 use Tomaj\Hermes\EmitterInterface;
 use Tomaj\Hermes\MessageInterface;

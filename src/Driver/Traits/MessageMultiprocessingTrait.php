@@ -1,8 +1,9 @@
 <?php
 
-namespace Efabrica\HermesExtension\Driver;
+namespace Efabrica\HermesExtension\Driver\Traits;
 
 use Closure;
+use Efabrica\HermesExtension\Driver\HermesDriverAccessor;
 use LogicException;
 use RedisProxy\RedisProxy;
 use Tomaj\Hermes\Driver\DriverInterface;

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Efabrica\HermesExtension\Driver;
 
+use Efabrica\HermesExtension\Driver\Interfaces\MessageReliabilityInterface;
+use Efabrica\HermesExtension\Driver\Interfaces\MonitoredStreamInterface;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use LogicException;
 use Tomaj\Hermes\Driver\DriverInterface;

@@ -1,8 +1,11 @@
 <?php
 
-namespace Efabrica\HermesExtension\Driver;
+namespace Efabrica\HermesExtension\Driver\Traits;
 
 use Closure;
+use Efabrica\HermesExtension\Driver\HermesDriverAccessor;
+use Efabrica\HermesExtension\Driver\Interfaces\MonitoredStreamInterface;
+use Efabrica\HermesExtension\Driver\Traits\MessageMultiprocessingTrait;
 use Efabrica\HermesExtension\Helpers\RedisResponse;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use RedisProxy\RedisProxy;
@@ -333,11 +336,11 @@ trait MonitoredStreamTrait
                             if (count($pendingMessages) > 1) {
                                 $hasMonitoredMessage = false;
                                 foreach ($pendingMessages as $pendingMessage) {
-                                    $messageId = $pendingMessage['id'];
-                                    if ($messageId === $id && $stream === $queue) {
+                                    if ($pendingMessage['id'] === $id && $stream === $queue) {
                                         $hasMonitoredMessage = true;
                                     }
                                 }
+                                unset($pendingMessage);
                                 if ($hasMonitoredMessage) {
                                     foreach ($pendingMessages as $pendingMessage) {
                                         $messageId = $pendingMessage['id'];
@@ -544,15 +547,21 @@ trait MonitoredStreamTrait
 
             foreach ($consumers as $consumer) {
                 $parsedConsumer = RedisResponse::readRedisListResponseToArray($consumer);
+                $consumerData = [
+                    'name' => $parsedConsumer['name'] ?? null,
+                    'pending' => ($parsedConsumer['pending'] ?? null) ? (int)$parsedConsumer['pending'] : null,
+                    'inactive' => ($parsedConsumer['inactive'] ?? null) ? (int)$parsedConsumer['inactive'] : null,
+                    'idle' => ($parsedConsumer['idle'] ?? null) ? (int)$parsedConsumer['idle'] : null,
+                ];
                 if (!isset($parsedConsumer['inactive']) && isset($parsedConsumer['idle'])) {
                     // Redis < 7.2.0, idle is inactive
-                    $parsedConsumer['inactive'] = $parsedConsumer['idle'];
-                    $parsedConsumer['idle'] = null;
+                    $consumerData['inactive'] = (int)$parsedConsumer['idle'];
+                    $consumerData['idle'] = null;
                 }
-                if (!isset($parsedConsumer['name'])) {
+                if (!isset($consumerData['name']) || !isset($consumerData['pending']) || !isset($consumerData['inactive'])) {
                     continue;
                 }
-                $output[$queue][$parsedConsumer['name']] = $parsedConsumer;
+                $output[$queue][$consumerData['name']] = $consumerData;
             }
         }
         return $output;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Efabrica\HermesExtension\Driver;
+namespace Efabrica\HermesExtension\Driver\Traits;
 
 trait ForkableDriverTrait
 {
