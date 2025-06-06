@@ -58,14 +58,16 @@ trait MessageMultiprocessingTrait
 
             $childProcess();
 
-            if (file_exists($flagFile)) {
-                $content = file_get_contents($flagFile);
-                if ($content === 'DONE') {
-                    break;
+            for ($i = 0; $i < 20; $i++) {
+                if (file_exists($flagFile)) {
+                    $content = file_get_contents($flagFile);
+                    if ($content === 'DONE') {
+                        break(2);
+                    }
                 }
-            }
 
-            sleep(1);
+                usleep(50000);
+            }
         }
 
         exit(0);
