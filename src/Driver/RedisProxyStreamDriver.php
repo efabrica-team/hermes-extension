@@ -39,7 +39,6 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
     private const STREAM_CONSUMERS_GROUP = 'consumers';
     private const MESSAGE_ID_PATTERN = '/[1-9]\d{9,12}-\d+$/';
-    const MILLISECONDS_PER_SECOND = 1000;
 
     /** @var array<int, string> */
     private array $queues = [];
@@ -166,7 +165,6 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
     /**
      * @param array<int, string> $queues
-     * @throws SerializeException
      * @throws UnknownPriorityException
      * @throws RedisProxyException
      */
@@ -206,12 +204,21 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             }
             $currentBody = $fields['body'];
 
+            try {
+                $message = $this->serializer->unserialize($currentBody);
+            } catch (Throwable $exception) {
+                Debugger::log($exception, Debugger::EXCEPTION);
+                $this->redis->rawCommand('XACK', $currentStream, self::STREAM_CONSUMERS_GROUP, $currentId);
+                $this->redis->rawCommand('XDEL', $currentStream, $currentId);
+                return null;
+            }
+
             return new StreamMessageEnvelope(
                 $currentStream,
                 $currentId,
                 self::STREAM_CONSUMERS_GROUP,
                 $this->myIdentifier,
-                $this->serializer->unserialize($currentBody),
+                $message,
                 $this->keyToPriority($currentStream),
             );
         }
