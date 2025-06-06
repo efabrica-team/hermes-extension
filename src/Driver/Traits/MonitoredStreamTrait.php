@@ -5,7 +5,6 @@ namespace Efabrica\HermesExtension\Driver\Traits;
 use Closure;
 use Efabrica\HermesExtension\Driver\HermesDriverAccessor;
 use Efabrica\HermesExtension\Driver\Interfaces\MonitoredStreamInterface;
-use Efabrica\HermesExtension\Driver\Traits\MessageMultiprocessingTrait;
 use Efabrica\HermesExtension\Helpers\RedisResponse;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use RedisProxy\RedisProxy;
@@ -32,6 +31,10 @@ use Tracy\Debugger;
  *     consumer: null|string,
  *     identity: string,
  * }
+ * @phpstan-type XCLAIMResponse array<int, array{
+ *     0: string,
+ *     1: array<int, string>,
+ * }>
  */
 trait MonitoredStreamTrait
 {
@@ -224,6 +227,7 @@ trait MonitoredStreamTrait
                         $claimedMessage = null;
 
                         if ($foundId && $id !== null) {
+                            /** @var XCLAIMResponse $claimedMessage */
                             $claimedMessage = $this->redis->rawCommand(
                                 'XCLAIM',
                                 $queue,
@@ -243,14 +247,29 @@ trait MonitoredStreamTrait
                         if ($claimedMessage !== null) {
                             $this->updateEnvelopeStatus();
                             $messageId = $claimedMessage[0];
-                            $messageBody = $claimedMessage[1][1];
+                            $fields = RedisResponse::readRedisListResponseToArray($claimedMessage[1]);
+                            if (!isset($fields['body']) || !is_string($fields['body'])) {
+                                // this message is malformed, does not have a proper body, delete it
+                                $this->redis->rawCommand('XACK', $queue, $group, $messageId);
+                                $this->redis->rawCommand('XDEL', $queue, $messageId);
+                                continue;
+                            }
+                            try {
+                                $messageBody = $this->serializer->unserialize($fields['body']);
+                            } catch (Throwable $exception) {
+                                // body has not a correct message form, delete it
+                                Debugger::log($exception, Debugger::EXCEPTION);
+                                $this->redis->rawCommand('XACK', $queue, $group, $messageId);
+                                $this->redis->rawCommand('XDEL', $queue, $messageId);
+                                continue;
+                            }
 
                             return new StreamMessageEnvelope(
                                 $queue,
                                 $messageId,
                                 $group,
                                 $this->myIdentifier,
-                                $this->serializer->unserialize($messageBody),
+                                $messageBody,
                                 $priority,
                             );
                         }

@@ -7,7 +7,6 @@ namespace Efabrica\HermesExtension\Driver\Traits;
 use Closure;
 use Efabrica\HermesExtension\Driver\HermesDriverAccessor;
 use Efabrica\HermesExtension\Driver\Interfaces\MessageReliabilityInterface;
-use Efabrica\HermesExtension\Driver\Traits\MessageMultiprocessingTrait;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use Throwable;
