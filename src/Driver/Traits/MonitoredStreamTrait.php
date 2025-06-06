@@ -567,10 +567,10 @@ trait MonitoredStreamTrait
             foreach ($consumers as $consumer) {
                 $parsedConsumer = RedisResponse::readRedisListResponseToArray($consumer);
                 $consumerData = [
-                    'name' => ($parsedConsumer['name'] ?? null) ? (string)$parsedConsumer['name'] : null,
-                    'pending' => ($parsedConsumer['pending'] ?? null) ? (int)$parsedConsumer['pending'] : null,
-                    'inactive' => ($parsedConsumer['inactive'] ?? null) ? (int)$parsedConsumer['inactive'] : null,
-                    'idle' => ($parsedConsumer['idle'] ?? null) ? (int)$parsedConsumer['idle'] : null,
+                    'name' => isset($parsedConsumer['name']) ? (string)$parsedConsumer['name'] : null,
+                    'pending' => isset($parsedConsumer['pending']) ? (int)$parsedConsumer['pending'] : null,
+                    'inactive' => isset($parsedConsumer['inactive']) ? (int)$parsedConsumer['inactive'] : null,
+                    'idle' => isset($parsedConsumer['idle']) ? (int)$parsedConsumer['idle'] : null,
                 ];
                 if (!isset($parsedConsumer['inactive']) && isset($parsedConsumer['idle'])) {
                     // Redis < 7.2.0, idle is inactive
