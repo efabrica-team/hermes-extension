@@ -116,6 +116,15 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
      */
     public function wait(Closure $callback, array $priorities): void
     {
+        $signalShutdown = false;
+        $signalHandler = static function (int $signal) use (&$signalShutdown) {
+            $signalShutdown = true;
+        };
+        if (extension_loaded('pcntl')) {
+            pcntl_signal(SIGTERM, $signalHandler);
+            pcntl_signal(SIGINT, $signalHandler);
+        }
+
         $accessor = HermesDriverAccessor::getInstance();
         $accessor->setDriver($this);
 
@@ -136,12 +145,13 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     break;
                 }
 
-                $this->doMonitoringTasks($queues, self::STREAM_CONSUMERS_GROUP);
-
-                $this->processDelayedTasks($queues);
+                if (!$signalShutdown) {
+                    $this->doMonitoringTasks($queues, self::STREAM_CONSUMERS_GROUP);
+                    $this->processDelayedTasks($queues);
+                }
 
                 $envelope = null;
-                if (!$this->hasActiveChildFork()) {
+                if (!$this->hasActiveChildFork() && !$signalShutdown) {
                     $envelope = $this->receiveMessage($queues);
                 }
                 if ($envelope !== null) {
@@ -162,6 +172,10 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     }
                     $this->ping(HermesProcess::STATUS_IDLE);
                     continue;
+                }
+
+                if ($signalShutdown) {
+                    break;
                 }
 
                 if ($this->refreshInterval) {
