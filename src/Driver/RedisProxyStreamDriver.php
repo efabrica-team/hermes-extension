@@ -32,6 +32,15 @@ use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tracy\Debugger;
 
+/**
+ * @phpstan-type StreamMessageResponse array<int, array{
+ *     0: string,
+ *     1: array<int, array{
+ *         0: string,
+ *         1: array<int, string|float|int|bool|null>|null,
+ *     }>,
+ * }>
+ */
 final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterface, ForkableDriverInterface, MonitoredStreamInterface
 {
     use MaxItemsTrait;
@@ -69,6 +78,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     {
         if ($message->getExecuteAt() === null) {
             $key = $this->getKey($priority);
+            /** @var string $id */
             $id = $this->redis->rawCommand(
                 'XADD',
                 $key,
@@ -182,6 +192,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             $streams = [];
             $streams = [...$streams, 'STREAMS', $queue, '>'];
 
+            /** @var StreamMessageResponse|null $message */
             $message = $this->redis->rawCommand(
                 'XREADGROUP',
                 'GROUP',
