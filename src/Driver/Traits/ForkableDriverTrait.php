@@ -23,10 +23,11 @@ trait ForkableDriverTrait
 
         if (extension_loaded('pcntl')) {
             $oldSignals = [];
-            pcntl_sigprocmask(SIG_BLOCK, [SIGTERM, SIGINT], $oldSignals);
+            pcntl_sigprocmask(SIG_BLOCK, [SIGTERM, SIGINT, SIGQUIT, SIGHUP], $oldSignals);
 
             $pid = pcntl_fork();
 
+            /** @var array<int, mixed> $oldSignals */
             pcntl_sigprocmask(SIG_SETMASK, $oldSignals);
 
             if ($pid === -1) {
