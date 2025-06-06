@@ -210,13 +210,23 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             $message = $message[0];
             $currentStream = $message[0];
             $currentId = $message[1][0][0];
+
+            if ($message[1][0][1] === null) {
+                // the message has no fields, it is malformed, delete it
+                $this->redis->rawCommand('XACK', $currentStream, self::STREAM_CONSUMERS_GROUP, $currentId);
+                $this->redis->rawCommand('XDEL', $currentStream, $currentId);
+                return null;
+            }
+
             $fields = RedisResponse::readRedisListResponseToArray($message[1][0][1]);
+
             if (!isset($fields['body'])) {
                 // this message does not have a body, it is malformed, delete it
                 $this->redis->rawCommand('XACK', $currentStream, self::STREAM_CONSUMERS_GROUP, $currentId);
                 $this->redis->rawCommand('XDEL', $currentStream, $currentId);
                 return null;
             }
+
             $currentBody = $fields['body'];
 
             try {

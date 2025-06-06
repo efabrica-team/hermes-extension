@@ -26,7 +26,7 @@ final class StreamMessageEnvelope
         string $group,
         string $consumer,
         MessageInterface $message,
-        int $priority,
+        int $priority
     ) {
         $this->queue = $queue;
         $this->id = $id;

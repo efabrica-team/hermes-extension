@@ -7,8 +7,8 @@ namespace Efabrica\HermesExtension\Helpers;
 final class RedisResponse
 {
     /**
-     * @param array<int, mixed> $listResponse
-     * @return array<string, mixed>
+     * @param array<int, string|float|int|bool|null> $listResponse
+     * @return array<string, string|float|int|bool|null>
      */
     public static function readRedisListResponseToArray(array $listResponse): array
     {
