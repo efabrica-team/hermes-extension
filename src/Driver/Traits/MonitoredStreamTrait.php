@@ -567,7 +567,7 @@ trait MonitoredStreamTrait
             foreach ($consumers as $consumer) {
                 $parsedConsumer = RedisResponse::readRedisListResponseToArray($consumer);
                 $consumerData = [
-                    'name' => $parsedConsumer['name'] ?? null,
+                    'name' => ($parsedConsumer['name'] ?? null) ? (string)$parsedConsumer['name'] : null,
                     'pending' => ($parsedConsumer['pending'] ?? null) ? (int)$parsedConsumer['pending'] : null,
                     'inactive' => ($parsedConsumer['inactive'] ?? null) ? (int)$parsedConsumer['inactive'] : null,
                     'idle' => ($parsedConsumer['idle'] ?? null) ? (int)$parsedConsumer['idle'] : null,
