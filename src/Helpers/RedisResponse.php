@@ -13,9 +13,9 @@ final class RedisResponse
     public static function readRedisListResponseToArray(array $listResponse): array
     {
         $output = [];
-        for ($i = 0; $i < count($listResponse); $i+=2) {
+        for ($i = 0; $i < count($listResponse); $i += 2) {
             $key = $listResponse[$i];
-            $value = self::decodeValue($listResponse[$i+1]);
+            $value = self::decodeValue($listResponse[$i + 1]);
             $output[$key] = $value;
         }
         return $output;

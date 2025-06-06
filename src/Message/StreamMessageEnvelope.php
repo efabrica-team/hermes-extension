@@ -65,5 +65,4 @@ final class StreamMessageEnvelope
     {
         return $this->priority;
     }
-
 }

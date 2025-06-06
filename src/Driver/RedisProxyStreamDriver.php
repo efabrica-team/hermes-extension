@@ -7,10 +7,13 @@ namespace Efabrica\HermesExtension\Driver;
 use Closure;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
+use Efabrica\HermesExtension\Helpers\RedisResponse;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
+use RuntimeException;
+use Throwable;
 use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\Driver\MaxItemsTrait;
@@ -111,6 +114,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             if (count($queues) === 0) {
                 return;
             }
+            $this->ping(HermesProcess::STATUS_IDLE);
             while (true) {
                 $this->updateEnvelopeStatus();
                 $this->checkShutdown();
@@ -147,6 +151,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                 if ($this->refreshInterval) {
                     $this->checkShutdown();
                     $this->checkToBeKilled();
+                    $this->ping(HermesProcess::STATUS_IDLE);
                     usleep(intval($this->refreshInterval) * 1000000);
                 }
             }
@@ -192,7 +197,14 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             $message = $message[0];
             $currentStream = $message[0];
             $currentId = $message[1][0][0];
-            $currentBody = $message[1][0][1][1];
+            $fields = RedisResponse::readRedisListResponseToArray($message[1][0][1]);
+            if (!isset($fields['body'])) {
+                // this message does not have a body, it is malformed, delete it
+                $this->redis->rawCommand('XACK', $currentStream, self::STREAM_CONSUMERS_GROUP, $currentId);
+                $this->redis->rawCommand('XDEL', $currentStream, $currentId);
+                return null;
+            }
+            $currentBody = $fields['body'];
 
             return new StreamMessageEnvelope(
                 $currentStream,
@@ -216,7 +228,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         try {
             $this->redis->rawCommand('XACK', $queue, $group, $id);
             $this->redis->rawCommand('XDEL', $queue, $id);
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             Debugger::log($exception, Debugger::EXCEPTION);
         }
     }
@@ -242,7 +254,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     private function prepareConsumer(array $queues): void
     {
         if (!$this->updateEnvelopeStatus(null, true)) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'Consumer %s already exists in driver monitor hash %s!',
                 $this->myIdentifier,
                 $this->monitorHashRedisKey,
@@ -257,7 +269,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                 $this->myIdentifier,
             );
             if ((int)$result === 0) {
-                throw new \RuntimeException(
+                throw new RuntimeException(
                     sprintf(
                         'Consumer %s already exists in stream %s and group %s!',
                         $this->myIdentifier,
@@ -286,7 +298,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     count($keys),
                     ...$keys,
                 );
-            } catch (\Throwable $exception) {
+            } catch (Throwable $exception) {
                 Debugger::log($exception, Debugger::EXCEPTION);
             }
         }
@@ -312,7 +324,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     ...$keys,
                     ...[$time],
                 );
-            } catch (\Throwable $exception) {
+            } catch (Throwable $exception) {
                 Debugger::log($exception, Debugger::EXCEPTION);
             }
         }

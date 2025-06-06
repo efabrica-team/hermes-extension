@@ -9,7 +9,6 @@ use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
 use Throwable;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
-use Tomaj\Hermes\Message;
 use Tracy\Debugger;
 
 /**
@@ -60,6 +59,107 @@ trait MonitoredStreamTrait
         $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
     }
 
+    private function monitorEnvelopeCallback(Closure $callback, StreamMessageEnvelope $envelope): void
+    {
+        $accessor = HermesDriverAccessor::getInstance();
+
+        $accessor->setEnvelopeInfo($envelope);
+        $accessor->setProcessingStatus();
+        try {
+            $this->updateEnvelopeStatus($envelope);
+            $processMessage = function () use ($callback, $envelope) {
+                $callback($envelope->getMessage(), $envelope->getPriority());
+            };
+            $notify = function () use ($envelope) {
+                $this->updateEnvelopeStatus($envelope);
+            };
+            $this->commonMainProcess($processMessage, $notify, $processMessage);
+            $this->updateEnvelopeStatus();
+        } finally {
+            $accessor->setProcessingStatus();
+            $accessor->clearTransmissionInfo();
+        }
+    }
+
+    /**
+     * Writes data about currently processed envelope
+     */
+    public function updateEnvelopeStatus(?StreamMessageEnvelope $envelope = null, bool $onlyIfNotExists = false): bool
+    {
+        $this->checkWriteAccess();
+
+        $key = $this->getMyKey();
+        $agentKey = $this->getAgentKey($key);
+
+        if ($onlyIfNotExists && $this->redis->hexists($this->monitorHashRedisKey, $key)) {
+            return false;
+        }
+
+        $status = (object)[
+            'timestamp' => microtime(true),
+            'message' => $envelope === null
+                ? null
+                : [
+                    'id' => $envelope->getMessage()->getId(),
+                    'type' => $envelope->getMessage()->getType(),
+                    'payload' => $envelope->getMessage()->getPayload(),
+                    'execute_at' => $envelope->getMessage()->getExecuteAt(),
+                    'retries' => $envelope->getMessage()->getRetries(),
+                    'created' => $envelope->getMessage()->getCreated(),
+                ],
+            'priority' => $envelope === null ? null : $envelope->getPriority(),
+            'id' => $envelope === null ? null : $envelope->getId(),
+            'stream' => $envelope === null ? null : $envelope->getQueue(),
+            'group' => $envelope === null ? null : $envelope->getGroup(),
+            'consumer' => $envelope === null ? null : $envelope->getConsumer(),
+            'identity' => $this->myIdentifier,
+        ];
+
+        try {
+            $encoded = json_encode($status);
+            if ($encoded !== false) {
+                $this->redis->hset($this->monitorHashRedisKey, $key, $encoded);
+                $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
+            }
+        } catch (Throwable $exception) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Write status and percentage of completeness of processing message into redis.
+     */
+    public function updateEnvelopeProcessingStatus(?string $status = null, ?float $percent = null): void
+    {
+        $this->checkWriteAccess();
+
+        $key = $this->getMyKey();
+        $statusKey = $this->getStatusKey($key);
+
+        if ($status === null) {
+            try {
+                $this->redis->del($statusKey);
+            } catch (Throwable $exception) {
+            }
+        } else {
+            if ($percent !== null) {
+                $percent = round($percent, 2);
+            }
+            try {
+                $body = json_encode([
+                    'status' => $status,
+                    'percent' => $percent === null ? null : max(min($percent, 100.0), 0.0),
+                    'timestamp' => microtime(true),
+                ]);
+                if ($body !== false) {
+                    $this->redis->set($statusKey, $body);
+                }
+            } catch (Throwable $exception) {
+            }
+        }
+    }
+
     /**
      * @param array<int, string> $queues
      * @throws RedisProxyException
@@ -87,7 +187,7 @@ trait MonitoredStreamTrait
                 foreach ($queues as $priority => $queue) {
                     foreach ($queuedConsumers[$queue] ?? [] as $consumerData) {
                         $consumer = $consumerData['consumer'];
-                        $pending  = $consumerData['pending'];
+                        $pending = $consumerData['pending'];
                         $monitorData = $monitoredConsumers[$consumer] ?? null;
 
                         if ($pending === 0 || $monitorData === null || $monitorData['agent'] === true) {
@@ -194,7 +294,10 @@ trait MonitoredStreamTrait
                         $monitorData = $monitoredConsumers[$consumerUUID] ?? null;
                         if ($monitorData === null) {
                             $pendingMessages = $this->getConsumerPendingList(
-                                $queue, $group, $consumerUUID, $consumerData['pending'] + 10,
+                                $queue,
+                                $group,
+                                $consumerUUID,
+                                $consumerData['pending'] + 10,
                             );
                             foreach ($pendingMessages as $pendingMessage) {
                                 $messageId = $pendingMessage['id'];
@@ -202,7 +305,11 @@ trait MonitoredStreamTrait
                                 $this->redis->rawCommand('XDEL', $queue, $messageId);
                             }
                             $this->redis->rawCommand(
-                                'XGROUP', 'DELCONSUMER', $queue, $group, $consumerUUID,
+                                'XGROUP',
+                                'DELCONSUMER',
+                                $queue,
+                                $group,
+                                $consumerUUID,
                             );
                             continue;
                         }
@@ -216,7 +323,11 @@ trait MonitoredStreamTrait
                             }
 
                             $pendingMessages = $this->getConsumerPendingList(
-                                $queue, $group, $consumerUUID, $consumerData['pending'] + 10, $id,
+                                $queue,
+                                $group,
+                                $consumerUUID,
+                                $consumerData['pending'] + 10,
+                                $id,
                             );
 
                             if (count($pendingMessages) > 1) {
@@ -245,7 +356,11 @@ trait MonitoredStreamTrait
                             continue;
                         }
                         $this->redis->rawCommand(
-                            'XGROUP', 'DELCONSUMER', $queue, $group, $consumerUUID,
+                            'XGROUP',
+                            'DELCONSUMER',
+                            $queue,
+                            $group,
+                            $consumerUUID,
                         );
                         $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
                         $statusKey = $this->getStatusKey($monitorData['field']);
@@ -361,8 +476,12 @@ trait MonitoredStreamTrait
         }
         if ($id !== null) {
             usort($output, function ($a, $b) use ($id) {
-                if ($a['id'] === $id) return -1;
-                if ($b['id'] === $id) return 1;
+                if ($a['id'] === $id) {
+                    return -1;
+                }
+                if ($b['id'] === $id) {
+                    return 1;
+                }
                 return 0;
             });
         }
@@ -437,107 +556,6 @@ trait MonitoredStreamTrait
             }
         }
         return $output;
-    }
-
-    private function monitorEnvelopeCallback(Closure $callback, StreamMessageEnvelope $envelope): void
-    {
-        $accessor = HermesDriverAccessor::getInstance();
-
-        $accessor->setEnvelopeInfo($envelope);
-        $accessor->setProcessingStatus();
-        try {
-            $this->updateEnvelopeStatus($envelope);
-            $processMessage = function () use ($callback, $envelope) {
-                $callback($envelope->getMessage(), $envelope->getPriority());
-            };
-            $notify = function () use ($envelope) {
-                $this->updateEnvelopeStatus($envelope);
-            };
-            $this->commonMainProcess($processMessage, $notify, $processMessage);
-            $this->updateEnvelopeStatus();
-        } finally {
-            $accessor->setProcessingStatus();
-            $accessor->clearTransmissionInfo();
-        }
-    }
-
-    /**
-     * Writes data about currently processed envelope
-     */
-    public function updateEnvelopeStatus(?StreamMessageEnvelope $envelope = null, bool $onlyIfNotExists = false): bool
-    {
-        $this->checkWriteAccess();
-
-        $key = $this->getMyKey();
-        $agentKey = $this->getAgentKey($key);
-
-        if ($onlyIfNotExists && $this->redis->hexists($this->monitorHashRedisKey, $key)) {
-            return false;
-        }
-
-        $status = (object)[
-            'timestamp' => microtime(true),
-            'message' => $envelope === null
-                ? null
-                : [
-                    'id' => $envelope->getMessage()->getId(),
-                    'type' => $envelope->getMessage()->getType(),
-                    'payload' => $envelope->getMessage()->getPayload(),
-                    'execute_at' => $envelope->getMessage()->getExecuteAt(),
-                    'retries' => $envelope->getMessage()->getRetries(),
-                    'created' => $envelope->getMessage()->getCreated(),
-                ],
-            'priority' => $envelope === null ? null : $envelope->getPriority(),
-            'id' => $envelope === null ? null : $envelope->getId(),
-            'stream' => $envelope === null ? null : $envelope->getQueue(),
-            'group' => $envelope === null ? null : $envelope->getGroup(),
-            'consumer' => $envelope === null ? null : $envelope->getConsumer(),
-            'identity' => $this->myIdentifier,
-        ];
-
-        try {
-            $encoded = json_encode($status);
-            if ($encoded !== false) {
-                $this->redis->hset($this->monitorHashRedisKey, $key, $encoded);
-                $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
-            }
-        } catch (Throwable $exception) {
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * Write status and percentage of completeness of processing message into redis.
-     */
-    public function updateEnvelopeProcessingStatus(?string $status = null, ?float $percent = null): void
-    {
-        $this->checkWriteAccess();
-
-        $key = $this->getMyKey();
-        $statusKey = $this->getStatusKey($key);
-
-        if ($status === null) {
-            try {
-                $this->redis->del($statusKey);
-            } catch (Throwable $exception) {
-            }
-        } else {
-            if ($percent !== null) {
-                $percent = round($percent, 2);
-            }
-            try {
-                $body = json_encode([
-                    'status' => $status,
-                    'percent' => $percent === null ? null : max(min($percent, 100.0), 0.0),
-                    'timestamp' => microtime(true),
-                ]);
-                if ($body !== false) {
-                    $this->redis->set($statusKey, $body);
-                }
-            } catch (Throwable $exception) {
-            }
-        }
     }
 
     /**
