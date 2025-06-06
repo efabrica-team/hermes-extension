@@ -369,6 +369,12 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     {
         $scriptSha = sha1_file($scriptFile);
 
+        if ($scriptSha === false) {
+            throw new RuntimeException(
+                'File not found: ' . $scriptFile,
+            );
+        }
+
         /** @var array<int|string> $result */
         $result = $this->redis->rawCommand('SCRIPT', 'EXISTS', $scriptSha);
         $result = (bool)(int)$result[0];

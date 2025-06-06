@@ -10,6 +10,8 @@ use Tomaj\Hermes\Driver\DriverInterface;
 
 trait MessageMultiprocessingTrait
 {
+    private RedisProxy $redis;
+
     private function commonMainProcess(Closure $mainProcess, Closure $childProcess, Closure $noForkProcess): void
     {
         if (extension_loaded('pcntl')) {
@@ -33,9 +35,7 @@ trait MessageMultiprocessingTrait
     private function commonForkMainProcess(Closure $mainProcess, int $pid, string $flagFile): void
     {
         try {
-            if (isset($this->redis) && $this->redis instanceof RedisProxy) {
-                $this->redis->resetConnectionPool();
-            }
+            $this->redis->resetConnectionPool();
             $mainProcess();
         } finally {
             file_put_contents($flagFile, 'DONE');
@@ -48,9 +48,7 @@ trait MessageMultiprocessingTrait
     private function commonForkChildProcess(Closure $childProcess, string $flagFile): void
     {
         $parentPid = posix_getppid();
-        if (isset($this->redis) && $this->redis instanceof RedisProxy) {
-            $this->redis->resetConnectionPool();
-        }
+        $this->redis->resetConnectionPool();
 
         while (true) {
             if (posix_getpgid($parentPid) === false) {
