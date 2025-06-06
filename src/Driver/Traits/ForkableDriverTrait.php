@@ -6,6 +6,8 @@ trait ForkableDriverTrait
 {
     private bool $forkProcess = false;
 
+    private ?int $childPid = null;
+
     public function setForkProcess(bool $forkProcess): void
     {
         $this->forkProcess = $forkProcess;
@@ -14,18 +16,36 @@ trait ForkableDriverTrait
     private function doForkProcess(callable $callback): void
     {
         if (!$this->forkProcess) {
+            $this->childPid = null;
             $callback();
             return;
         }
 
-        if (function_exists('pcntl_fork')) {
+        if (extension_loaded('pcntl')) {
+            $oldSignals = [];
+            pcntl_sigprocmask(SIG_BLOCK, [SIGTERM, SIGINT], $oldSignals);
+
             $pid = pcntl_fork();
 
+            pcntl_sigprocmask(SIG_SETMASK, $oldSignals);
+
             if ($pid === -1) {
+                $this->childPid = null;
                 $callback();
             } elseif ($pid) {
                 // MAIN PROCESS
-                pcntl_waitpid($pid, $status);
+                $this->childPid = $pid;
+                while (true) {
+                    pcntl_signal_dispatch();
+                    $status = pcntl_waitpid($pid, $status, WNOHANG);
+
+                    if ($status === $pid || $status === -1) {
+                        $this->childPid = null;
+                        break;
+                    }
+
+                    usleep(100000);
+                }
             } else {
                 // CHILD PROCESS
                 try {
@@ -37,5 +57,10 @@ trait ForkableDriverTrait
         } else {
             $callback();
         }
+    }
+
+    private function hasActiveChildFork(): bool
+    {
+        return $this->childPid !== null;
     }
 }

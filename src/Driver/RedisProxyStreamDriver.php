@@ -140,7 +140,10 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
                 $this->processDelayedTasks($queues);
 
-                $envelope = $this->receiveMessage($queues);
+                $envelope = null;
+                if (!$this->hasActiveChildFork()) {
+                    $envelope = $this->receiveMessage($queues);
+                }
                 if ($envelope !== null) {
                     $this->ping(HermesProcess::STATUS_PROCESSING);
                     $this->incrementProcessedItems();
