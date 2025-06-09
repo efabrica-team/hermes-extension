@@ -6,6 +6,7 @@ namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
 use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
+use Efabrica\HermesExtension\Driver\Traits\ProcessSignalTrait;
 use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
@@ -30,6 +31,7 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
     use SerializerAwareTrait;
     use HeartbeatBehavior;
     use QueueAwareTrait;
+    use ProcessSignalTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -93,6 +95,7 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
+        $this->handleSignals();
         $queues = $this->queues;
         krsort($queues);
         while (true) {
@@ -107,6 +110,10 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                 $microTime = microtime(true);
                 $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string) $microTime, ['limit' => [0, 1]]);
                 for ($i = 1; $i <= count($messageStrings); $i++) {
+                    if (!$this->canOperate()) {
+                        break 2;
+                    }
+
                     $messageString = $this->pop($this->scheduleKey);
                     if (!$messageString) {
                         break;
@@ -131,8 +138,14 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                     break;
                 }
 
-                $messageString = $this->pop($this->getKey($priority));
-                $foundPriority = $priority;
+                if ($this->canOperate()) {
+                    $messageString = $this->pop($this->getKey($priority));
+                    $foundPriority = $priority;
+                }
+            }
+
+            if (!$this->canOperate() && $messageString === null) {
+                break;
             }
 
             if ($messageString !== null) {

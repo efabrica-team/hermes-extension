@@ -10,6 +10,7 @@ use Efabrica\HermesExtension\Driver\Interfaces\MessageReliabilityInterface;
 use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
 use Efabrica\HermesExtension\Driver\Traits\ForkableDriverTrait;
 use Efabrica\HermesExtension\Driver\Traits\MessageReliabilityTrait;
+use Efabrica\HermesExtension\Driver\Traits\ProcessSignalTrait;
 use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
@@ -35,6 +36,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
     use QueueAwareTrait;
     use MessageReliabilityTrait;
     use ForkableDriverTrait;
+    use ProcessSignalTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -83,6 +85,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
+        $this->handleSignals();
         $accessor = HermesDriverAccessor::getInstance();
         $accessor->setDriver($this);
         $queues = $this->queues;
@@ -95,9 +98,10 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     break;
                 }
 
-                $this->recoverMessages();
+                if ($this->canOperate()) {
+                    $this->recoverMessages();
+                }
 
-                $messageString = null;
                 $foundPriority = null;
 
                 $this->updateMessageStatus();
@@ -116,7 +120,10 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                             break 3;
                         }
                         $this->updateMessageStatus();
-                        $messageString = $this->pop($key);
+                        $messageString = null;
+                        if (!$this->hasActiveChildFork() && $this->canOperate()) {
+                            $messageString = $this->pop($key);
+                        }
                         if ($messageString === null) {
                             break;
                         }
@@ -128,7 +135,10 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                             }
                         );
                         $this->incrementProcessedItems();
-                        $this->recoverMessages();
+
+                        if ($this->canOperate()) {
+                            $this->recoverMessages();
+                        }
 
                         if ($this->useTopPriorityFallback) {
                             break 2;
@@ -137,6 +147,10 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                 }
 
                 $this->updateMessageStatus();
+
+                if (!$this->canOperate()) {
+                    break;
+                }
 
                 if ($this->refreshInterval) {
                     $this->checkShutdown();

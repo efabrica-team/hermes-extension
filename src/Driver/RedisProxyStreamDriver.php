@@ -10,6 +10,7 @@ use Efabrica\HermesExtension\Driver\Interfaces\MonitoredStreamInterface;
 use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
 use Efabrica\HermesExtension\Driver\Traits\ForkableDriverTrait;
 use Efabrica\HermesExtension\Driver\Traits\MonitoredStreamTrait;
+use Efabrica\HermesExtension\Driver\Traits\ProcessSignalTrait;
 use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
@@ -50,6 +51,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     use QueueAwareTrait;
     use ForkableDriverTrait;
     use MonitoredStreamTrait;
+    use ProcessSignalTrait;
 
     private const STREAM_CONSUMERS_GROUP = 'consumers';
     private const MESSAGE_ID_PATTERN = '/[1-9]\d{9,12}-\d+$/';
@@ -116,16 +118,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
      */
     public function wait(Closure $callback, array $priorities): void
     {
-        $signalShutdown = false;
-        $signalHandler = static function (int $signal) use (&$signalShutdown) {
-            $signalShutdown = true;
-        };
-        if (extension_loaded('pcntl')) {
-            pcntl_signal(SIGTERM, $signalHandler);
-            pcntl_signal(SIGINT, $signalHandler);
-            pcntl_signal(SIGQUIT, $signalHandler);
-            pcntl_signal(SIGHUP, $signalHandler);
-        }
+        $this->handleSignals();
 
         $accessor = HermesDriverAccessor::getInstance();
         $accessor->setDriver($this);
@@ -147,13 +140,13 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     break;
                 }
 
-                if (!$signalShutdown) {
+                if ($this->canOperate()) {
                     $this->doMonitoringTasks($queues, self::STREAM_CONSUMERS_GROUP);
                     $this->processDelayedTasks($queues);
                 }
 
                 $envelope = null;
-                if (!$this->hasActiveChildFork() && !$signalShutdown) {
+                if (!$this->hasActiveChildFork() && $this->canOperate()) {
                     $envelope = $this->receiveMessage($queues);
                 }
                 if ($envelope !== null) {
@@ -176,7 +169,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     continue;
                 }
 
-                if ($signalShutdown) {
+                if (!$this->canOperate()) {
                     break;
                 }
 

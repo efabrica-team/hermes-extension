@@ -6,6 +6,7 @@ namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
 use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
+use Efabrica\HermesExtension\Driver\Traits\ProcessSignalTrait;
 use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
@@ -29,6 +30,7 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
     use SerializerAwareTrait;
     use HeartbeatBehavior;
     use QueueAwareTrait;
+    use ProcessSignalTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -73,6 +75,8 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
+        $this->handleSignals();
+
         $queues = $this->queues;
         krsort($queues);
         $counter = 0;
@@ -92,12 +96,21 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
                     continue;
                 }
 
-                $messageString = $this->pop($this->getKey($priority));
-                $foundPriority = $priority;
+                $messageString = null;
+                $foundPriority = null;
+
+                if ($this->canOperate()) {
+                    $messageString = $this->pop($this->getKey($priority));
+                    $foundPriority = $priority;
+                }
 
                 if ($messageString !== null) {
                     break;
                 }
+            }
+
+            if (!$this->canOperate() && $messageString === null) {
+                break;
             }
 
             if ($messageString !== null) {

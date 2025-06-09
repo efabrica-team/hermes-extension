@@ -71,12 +71,12 @@ final class HermesDriverAccessor
 
     public function getMessage(): ?MessageInterface
     {
-        return $this->message;
+        return $this->message ? clone $this->message : null;
     }
 
     public function getEnvelope(): ?StreamMessageEnvelope
     {
-        return $this->envelope;
+        return $this->envelope ? clone $this->envelope : null;
     }
 
     public function getPriority(): ?int
