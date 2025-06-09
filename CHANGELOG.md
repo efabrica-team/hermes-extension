@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Stream based driver
+
+### Changed
+- Improved performance, added graceful termination and hermes accessors to all drivers
+
 ## [1.3.1] - 2025-05-01
 ### Fixed
 - Fixed lock mechanism in MessageReliabilityTrait
