@@ -140,13 +140,13 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     break;
                 }
 
-                if ($this->canOperate()) {
+                if ($this->canContinue()) {
                     $this->doMonitoringTasks($queues, self::STREAM_CONSUMERS_GROUP);
                     $this->processDelayedTasks($queues);
                 }
 
                 $envelope = null;
-                if (!$this->hasActiveChildFork() && $this->canOperate()) {
+                if (!$this->hasActiveChildFork() && $this->canContinue()) {
                     $envelope = $this->receiveMessage($queues);
                 }
                 if ($envelope !== null) {
@@ -169,7 +169,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     continue;
                 }
 
-                if (!$this->canOperate()) {
+                if (!$this->canContinue()) {
                     break;
                 }
 

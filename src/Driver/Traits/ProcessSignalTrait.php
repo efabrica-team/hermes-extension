@@ -36,7 +36,7 @@ trait ProcessSignalTrait
     /**
      * Tests if driver operations can proceed or not.
      */
-    private function canOperate(): bool
+    private function canContinue(): bool
     {
         return !$this->signalShutdown;
     }

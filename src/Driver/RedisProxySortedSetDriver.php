@@ -112,7 +112,7 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                 $microTime = microtime(true);
                 $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string) $microTime, ['limit' => [0, 1]]);
                 for ($i = 1; $i <= count($messageStrings); $i++) {
-                    if (!$this->canOperate()) {
+                    if (!$this->canContinue()) {
                         break 2;
                     }
 
@@ -140,13 +140,13 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                     break;
                 }
 
-                if ($this->canOperate()) {
+                if ($this->canContinue()) {
                     $messageString = $this->pop($this->getKey($priority));
                     $foundPriority = $priority;
                 }
             }
 
-            if (!$this->canOperate() && $messageString === null) {
+            if (!$this->canContinue() && $messageString === null) {
                 break;
             }
 

@@ -101,7 +101,7 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
                 $messageString = null;
                 $foundPriority = null;
 
-                if ($this->canOperate()) {
+                if ($this->canContinue()) {
                     $messageString = $this->pop($this->getKey($priority));
                     $foundPriority = $priority;
                 }
@@ -111,7 +111,7 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
                 }
             }
 
-            if (!$this->canOperate() && $messageString === null) {
+            if (!$this->canContinue() && $messageString === null) {
                 break;
             }
 

@@ -98,7 +98,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     break;
                 }
 
-                if ($this->canOperate()) {
+                if ($this->canContinue()) {
                     $this->recoverMessages();
                 }
 
@@ -121,7 +121,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                         }
                         $this->updateMessageStatus();
                         $messageString = null;
-                        if (!$this->hasActiveChildFork() && $this->canOperate()) {
+                        if (!$this->hasActiveChildFork() && $this->canContinue()) {
                             $messageString = $this->pop($key);
                         }
                         if ($messageString === null) {
@@ -136,7 +136,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                         );
                         $this->incrementProcessedItems();
 
-                        if ($this->canOperate()) {
+                        if ($this->canContinue()) {
                             $this->recoverMessages();
                         }
 
@@ -148,7 +148,7 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
 
                 $this->updateMessageStatus();
 
-                if (!$this->canOperate()) {
+                if (!$this->canContinue()) {
                     break;
                 }
 
