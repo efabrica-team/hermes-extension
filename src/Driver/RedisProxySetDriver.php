@@ -76,6 +76,8 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
     public function wait(Closure $callback, array $priorities = []): void
     {
         $this->handleSignals();
+        $accessor = HermesDriverAccessor::getInstance();
+        $accessor->setDriver($this);
 
         $queues = $this->queues;
         krsort($queues);
@@ -119,7 +121,9 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
                     $counter = 0;
                 }
                 $message = $this->serializer->unserialize($messageString);
+                $accessor->setMessage($message, $foundPriority);
                 $callback($message, $foundPriority);
+                $accessor->clear();
                 $this->incrementProcessedItems();
             } elseif ($this->refreshInterval) {
                 $this->checkShutdown();

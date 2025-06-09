@@ -35,7 +35,7 @@ final class HermesDriverAccessor
         return self::$instance;
     }
 
-    public function setMessageInfo(?MessageInterface $message, ?int $priority): void
+    public function setMessage(?MessageInterface $message, ?int $priority): void
     {
         $this->checkWriteAccess();
 
@@ -44,7 +44,7 @@ final class HermesDriverAccessor
         $this->priority = $priority;
     }
 
-    public function setEnvelopeInfo(?StreamMessageEnvelope $envelope): void
+    public function setEnvelope(?StreamMessageEnvelope $envelope): void
     {
         $this->checkWriteAccess();
 
@@ -53,7 +53,7 @@ final class HermesDriverAccessor
         $this->priority = $envelope !== null ? $envelope->getPriority() : null;
     }
 
-    public function clearTransmissionInfo(): void
+    public function clear(): void
     {
         $this->checkWriteAccess();
 

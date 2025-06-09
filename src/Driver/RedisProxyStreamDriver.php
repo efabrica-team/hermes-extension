@@ -184,7 +184,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             $this->ping(HermesProcess::STATUS_KILLED);
             throw $exception;
         } finally {
-            $accessor->clearTransmissionInfo();
+            $accessor->clear();
             $this->removeConsumer($queues);
         }
     }

@@ -69,7 +69,7 @@ trait MonitoredStreamTrait
     {
         $accessor = HermesDriverAccessor::getInstance();
 
-        $accessor->setEnvelopeInfo($envelope);
+        $accessor->setEnvelope($envelope);
         $accessor->setProcessingStatus();
         try {
             $this->updateEnvelopeStatus($envelope);
@@ -83,7 +83,7 @@ trait MonitoredStreamTrait
             $this->updateEnvelopeStatus();
         } finally {
             $accessor->setProcessingStatus();
-            $accessor->clearTransmissionInfo();
+            $accessor->clear();
         }
     }
 

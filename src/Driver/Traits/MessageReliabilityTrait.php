@@ -59,7 +59,7 @@ trait MessageReliabilityTrait
     {
         $accessor = HermesDriverAccessor::getInstance();
 
-        $accessor->setMessageInfo($message, $foundPriority);
+        $accessor->setMessage($message, $foundPriority);
         $accessor->setProcessingStatus();
         try {
             $this->updateMessageStatus($message, $foundPriority);
@@ -77,7 +77,7 @@ trait MessageReliabilityTrait
             $this->updateMessageStatus();
         } finally {
             $accessor->setProcessingStatus();
-            $accessor->clearTransmissionInfo();
+            $accessor->clear();
         }
     }
 
