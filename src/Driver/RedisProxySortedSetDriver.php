@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
+use Efabrica\HermesExtension\Driver\Interfaces\ForkableDriverInterface;
 use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
+use Efabrica\HermesExtension\Driver\Traits\ForkableDriverTrait;
 use Efabrica\HermesExtension\Driver\Traits\ProcessSignalTrait;
 use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
@@ -24,7 +26,7 @@ use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 
-final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInterface
+final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInterface, ForkableDriverInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
@@ -32,6 +34,7 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
     use HeartbeatBehavior;
     use QueueAwareTrait;
     use ProcessSignalTrait;
+    use ForkableDriverTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -140,7 +143,7 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                     break;
                 }
 
-                if ($this->canContinue()) {
+                if ($this->canContinue() && !$this->hasActiveChildFork()) {
                     $messageString = $this->pop($this->getKey($priority));
                     $foundPriority = $priority;
                 }
@@ -154,7 +157,11 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                 $this->ping(HermesProcess::STATUS_PROCESSING);
                 $message = $this->serializer->unserialize($messageString);
                 $accessor->setMessage($message, $foundPriority);
-                $callback($message, $foundPriority);
+                $this->doForkProcess(
+                    static function () use ($callback, $message, $foundPriority) {
+                        $callback($message, $foundPriority);
+                    }
+                );
                 $accessor->clear();
                 $this->incrementProcessedItems();
             } elseif ($this->refreshInterval) {

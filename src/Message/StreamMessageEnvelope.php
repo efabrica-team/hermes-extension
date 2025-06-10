@@ -65,4 +65,9 @@ final class StreamMessageEnvelope
     {
         return $this->priority;
     }
+
+    public function __clone()
+    {
+        $this->message = clone $this->message;
+    }
 }

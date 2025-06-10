@@ -9,6 +9,7 @@ use Efabrica\HermesExtension\Helpers\RedisResponse;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
+use RuntimeException;
 use Throwable;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
 use Tracy\Debugger;
@@ -49,10 +50,26 @@ trait MonitoredStreamTrait
 
     private int $keepAliveTTL = 60;
 
+    private int $maximumMessageClaims = MonitoredStreamInterface::XCLAIM_RETRIES;
+
     /**
      * @var int|string
      */
     private $myPID = 0;
+
+    /**
+     * Sets how many times the message can be claimed when is stuck in pending state.
+     * Setting this to <em>0</em> causes all messages to be executed only once and throw away
+     * in case of driver crash or force-stop. Value must be non-negative. Defaults to 3 re-claims.
+     * @inheritDoc
+     */
+    public function setMaximumXClaims(int $value = MonitoredStreamInterface::XCLAIM_RETRIES): void
+    {
+        if ($value < 0) {
+            throw new RuntimeException('Maximum message XCLAIMs cannot be negative!');
+        }
+        $this->maximumMessageClaims = $value;
+    }
 
     private function initMonitoredStream(
         string $monitorHashRedisKey,
@@ -215,7 +232,7 @@ trait MonitoredStreamTrait
                             $messageId = $pendingMessage['id'];
                             $messageDelivered = $pendingMessage['delivered'];
                             if ($id !== null && $stream === $queue && $messageId === $id
-                                && $messageDelivered <= MonitoredStreamInterface::REQUEUE_REPEATS
+                                && $messageDelivered <= $this->maximumMessageClaims
                             ) {
                                 $foundId = true;
                                 continue;

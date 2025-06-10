@@ -69,18 +69,37 @@ final class HermesDriverAccessor
         $this->driver = $driver;
     }
 
+    /**
+     * Returns copy of stored message. If the message is stored in envelope
+     * it will return copy of enveloped message. Returns `null` if there is
+     * no message or envelope.
+     */
     public function getMessage(): ?MessageInterface
     {
+        if ($this->message === null && $this->envelope !== null) {
+            return clone $this->envelope->getMessage();
+        }
         return $this->message ? clone $this->message : null;
     }
 
+    /**
+     * Returns copy of envelope or `null` if there is no envelope.
+     */
     public function getEnvelope(): ?StreamMessageEnvelope
     {
         return $this->envelope ? clone $this->envelope : null;
     }
 
+    /**
+     * Returns message priority. It the message is stored in envelope
+     * it will return priority from envelope. Returns `null` if there
+     * is no message or envelope.
+     */
     public function getPriority(): ?int
     {
+        if ($this->priority === null && $this->envelope !== null) {
+            return $this->envelope->getPriority();
+        }
         return $this->priority;
     }
 
