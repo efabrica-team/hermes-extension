@@ -65,6 +65,7 @@ trait MonitoredStreamTrait
      */
     public function setMaximumXClaims(int $value = MonitoredStreamInterface::XCLAIM_RETRIES): void
     {
+        /** @phpstan-ignore-next-line */
         if ($value < 0) {
             throw new RuntimeException('Maximum message XCLAIMs cannot be negative!');
         }
