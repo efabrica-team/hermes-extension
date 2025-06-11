@@ -14,7 +14,7 @@ trait MessageMultiprocessingTrait
 
     private function commonMainProcess(Closure $mainProcess, Closure $childProcess, Closure $noForkProcess): void
     {
-        if (extension_loaded('pcntl')) {
+        if (extension_loaded('pcntl') && extension_loaded('posix')) {
             $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
             @unlink($flagFile);
 
@@ -32,6 +32,9 @@ trait MessageMultiprocessingTrait
         }
     }
 
+    /**
+     * @internal Do not use this method outside trait!
+     */
     private function commonForkMainProcess(Closure $mainProcess, int $pid, string $flagFile): void
     {
         try {
@@ -45,12 +48,15 @@ trait MessageMultiprocessingTrait
         }
     }
 
+    /**
+     * @internal Do not use this method outside trait!
+     */
     private function commonForkChildProcess(Closure $childProcess, string $flagFile): void
     {
         $parentPid = posix_getppid();
         $this->redis->resetConnectionPool();
 
-        if (posix_getpgid($parentPid) === false) {
+        if ($this->isParentDead($parentPid)) {
             exit(0); // Parent process is stopped, so this process ends too ...
         }
 
@@ -65,7 +71,7 @@ trait MessageMultiprocessingTrait
                     }
                 }
 
-                if (posix_getpgid($parentPid) === false) {
+                if ($this->isParentDead($parentPid)) {
                     break(2);
                 }
 
@@ -95,5 +101,28 @@ trait MessageMultiprocessingTrait
                 HermesDriverAccessor::class
             ));
         }
+    }
+
+    /**
+     * @internal Do not use this method outside trait!
+     * @phpstan-impure
+     */
+    private function isParentDead(int $parentPid): bool
+    {
+        $deadChecks = 0;
+
+        for ($i = 0; $i < 3; $i++) { // 3 test passes
+            if (posix_getpgid($parentPid) === false && posix_kill($parentPid, 0) === false) {
+                $deadChecks++;
+            } else {
+                return false; // parent isn't dead
+            }
+
+            if ($i < 2) {
+                usleep(1000);
+            }
+        }
+
+        return $deadChecks === 3; // 3× positive check = dead parent
     }
 }
