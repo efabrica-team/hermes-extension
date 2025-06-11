@@ -403,9 +403,6 @@ trait MonitoredStreamTrait
                             $group,
                             $consumerUUID,
                         );
-                        $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
-                        $statusKey = $this->getStatusKey($monitorData['field']);
-                        $this->redis->del($statusKey);
                     }
                 }
                 foreach ($monitoredConsumers as $consumerUUID => $monitorData) {
