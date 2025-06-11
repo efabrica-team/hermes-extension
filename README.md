@@ -7,7 +7,7 @@
 
 Extension for tomaj/hermes. It contains:
 - `HermesWorker` (symfony command)
-- Drivers (RedisProxy based):
+- Drivers (`RedisProxy` based):
   - `RedisProxySetDriver`
   - `RedisProxySortedSetDriver`
   - `RedisProxyListDriver`
