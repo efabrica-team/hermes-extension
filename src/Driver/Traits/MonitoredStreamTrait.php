@@ -11,6 +11,7 @@ use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
 use RuntimeException;
 use Throwable;
+use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
 use Tracy\Debugger;
 
@@ -420,7 +421,7 @@ trait MonitoredStreamTrait
                     }
                     $message = $monitorData['body']['message'] ?? null;
                     $priority = $monitorData['body']['priority'] ?? null;
-                    if ($message !== null && $priority !== null) {
+                    if ($message !== null && $priority !== null && $this instanceof DriverInterface) {
                         $encodedMessage = json_encode(['message' => $message]);
                         if ($encodedMessage !== false) {
                             try {
