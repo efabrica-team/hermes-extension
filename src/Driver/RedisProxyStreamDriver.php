@@ -158,11 +158,11 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                                 $this->monitorEnvelopeCallback($callback, $envelope);
                             }
                         );
-                        $this->finishMessage($envelope);
                         $this->updateEnvelopeStatus();
+                        $this->finishMessage($envelope);
                     } catch (ShutdownException $exception) {
-                        $this->finishMessage($envelope);
                         $this->updateEnvelopeStatus();
+                        $this->finishMessage($envelope);
                         throw $exception;
                     }
                     $this->ping(HermesProcess::STATUS_IDLE);
