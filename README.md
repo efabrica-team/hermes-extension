@@ -96,14 +96,19 @@ $emitter->emit(new Message(
 
 - Simple driver that uses Redis set(s) to deliver/process messages.
 - This driver can't use delayed execution.
-- Message acquired by the `Dispatcher` is immediately taken out from the queue and possibly lost when dispatcher crashed or is force-stopped.
+- Message acquired by the `Dispatcher` is immediately taken out from the queue and possibly lost when dispatcher crashed
+  or is force-stopped.
 - There is no real-time monitoring.
 
 ### `RedisProxySortedSetDriver`
 
 - Simple driver that uses Redis sorted set(s) to deliver/process messages.
-- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment).
-- Message acquired by the `Dispatcher` is immediately taken out from the queue and possibly lost when dispatcher crashed or is force-stopped. There is a minimal but still real chance that delayed message may be lost if process is force-stopped.
+- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment). The
+  priority of the message is lost in the process, message that goes from delayed to processing queue will have default
+  priority assigned.
+- Message acquired by the `Dispatcher` is immediately taken out from the queue and possibly lost when dispatcher crashed
+  or is force-stopped. There is a minimal but still real chance that delayed message may be lost if process is
+  force-stopped.
 - There is no real-time monitoring.
 
 ### `RedisProxyListDriver`
@@ -111,7 +116,7 @@ $emitter->emit(new Message(
 - More complex driver that uses Redis list(s) to deliver/process messages.
 - This driver can't use delayed execution.
 - If the message reliability is turned on the messages are re-queued when dispatcher crashes or is force-stopped. 
-  Otherwise the message can be lost in these cases.
+  Otherwise, the message can be lost in these cases.
 - If the message reliability is turned on, on the **posix enabled systems** (loaded `pcntl` and `posix` extensions),
   the message is monitored by background heartbeat process (notifying work on the message by the handler approximately
   each 1 second). If the system is not posix enabled, the processing of the message can still be notified by the use
@@ -126,7 +131,9 @@ $emitter->emit(new Message(
 ### `RedisProxyStreamDriver`
 
 - More complex driver that uses Redis stream(s) to deliver/process messages.
-- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment).
+- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment). This driver
+  transfers the message priority through the delayed queue, message moved to the processing queue has had the original
+  priority.
 - Driver registers consumer inside Redis streams. Due to this, driver is always monitored.
   Monitoring is almost identical to the monitoring implemented in `RedisProxyListDriver` (when reliability is turned on).
   Monitoring here monitors not only messages but the consumers too, clearing outdated consumers from Redis memory.
