@@ -83,71 +83,51 @@ $emitter->emit(new Message(
 
 ## `RedisProxy` drivers
 
-**Common drivers properties:**
+**Common driver properties:**
 - can define one (default) or more priority queues
-- can have shutdown defined to stop their work
-- can have heartbeat defined to track activity
-- can be stopped automatically after processing given number of messages
-- are able to be stopped by system signals (`SIGTERM`, `SIGINT`, `SIGQUIT` and `SIGHUP`)
-- can be set to be forked before message handler execution (handler runs in child process) [**posix systems only**]
-- handlers executed by the drivers can access the message data using HermesDriverAccessor singleton class
+- can have shutdown functionality defined to stop their work
+- can have heartbeat functionality defined to track activity
+- can be stopped automatically after processing a given number of messages
+- can be stopped by system signals (`SIGTERM`, `SIGINT`, `SIGQUIT` and `SIGHUP`)
+- can be configured to fork before message handler execution (handler runs in child process) [**POSIX systems only**]
+- handlers executed by drivers can access the message data using the `HermesDriverAccessor` singleton class
 
 ### `RedisProxySetDriver`
 
 - Simple driver that uses Redis set(s) to deliver/process messages.
 - This driver can't use delayed execution.
-- Message acquired by the `Dispatcher` is immediately taken out from the queue and possibly lost when dispatcher crashed
-  or is force-stopped.
+- A message acquired by the `Dispatcher` is immediately taken out of the queue and possibly lost when the dispatcher crashes or is force-stopped.
 - There is no real-time monitoring.
 
 ### `RedisProxySortedSetDriver`
 
 - Simple driver that uses Redis sorted set(s) to deliver/process messages.
-- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment). The
-  priority of the message is lost in the process, message that goes from delayed to processing queue will have default
-  priority assigned.
-- Message acquired by the `Dispatcher` is immediately taken out from the queue and possibly lost when dispatcher crashed
-  or is force-stopped. There is a minimal but still real chance that delayed message may be lost if process is
-  force-stopped.
+- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment). The message's priority is lost in this process; a message that moves from the delayed queue to the processing queue will have default priority assigned.
+- A message acquired by the `Dispatcher` is immediately taken out of the queue and possibly lost when the dispatcher crashes or is force-stopped. There is a small but real chance that a delayed message may be lost if the process is force-stopped.
 - There is no real-time monitoring.
 
 ### `RedisProxyListDriver`
 
 - More complex driver that uses Redis list(s) to deliver/process messages.
 - This driver can't use delayed execution.
-- If the message reliability is turned on the messages are re-queued when dispatcher crashes or is force-stopped. 
-  Otherwise, the message can be lost in these cases.
-- If the message reliability is turned on, on the **posix enabled systems** (loaded `pcntl` and `posix` extensions),
-  the message is monitored by background heartbeat process (notifying work on the message by the handler approximately
-  each 1 second). If the system is not posix enabled, the processing of the message can still be notified by the use
-  of `HermesDriverAccessor`. Notifications from heartbeat or `HermesDriverAccessors` resets the message processing
-  timer. Each message got a processing protection by the monitor for given `keepAliveTTL`, when this protection expires
-  the message is re-queued.
-- If priorities are defined, this driver has different behaviour among the other `RedisProxy` drivers. The messages are
-  processed from highest to lowest priority, but the driver continues to take message from actual priority level without
-  returning to the high priority first. This default behaviour of the driver can be changed to the same behaviour as the
-  other drivers uses by calling `setUseTopPriorityFallback(true)` on the driver object during driver setup.
+- If message reliability is enabled, the messages are re-queued when the dispatcher crashes or is force-stopped. Otherwise, messages can be lost in these cases.
+- If message reliability is enabled, on **POSIX-enabled systems** (loaded `pcntl` and `posix` extensions), the message is monitored by a background heartbeat process (notifying that work is being done on the message approximately every 1 second). If the system is not POSIX-enabled, message processing can still be tracked by using `HermesDriverAccessor`. Notifications from heartbeat or `HermesDriverAccessor` reset the message processing timer. Each message gets processing protection by the monitor for a given `keepAliveTTL`; when this protection expires, the message is re-queued.
+- If priorities are defined, this driver has different behavior among the other `RedisProxy` drivers. The messages are processed from highest to lowest priority, but the driver continues to take messages from the current priority level without returning to the high priority first. This default behavior can be changed to match the behavior that other drivers use by calling `setUseTopPriorityFallback(true)` on the driver object during driver setup.
 
 ### `RedisProxyStreamDriver`
 
 - More complex driver that uses Redis stream(s) to deliver/process messages.
-- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment). This driver
-  transfers the message priority through the delayed queue, message moved to the processing queue has had the original
-  priority.
-- Driver registers consumer inside Redis streams. Due to this, driver is always monitored.
+- This driver can use delayed execution (message is executed after the `executeAt` timestamp at any moment). This driver preserves the message priority through the delayed queue; a message moved to the processing queue retains its original priority.
+- The driver registers a consumer inside Redis streams. Due to this, the driver is always monitored.
   Monitoring is almost identical to the monitoring implemented in `RedisProxyListDriver` (when reliability is turned on).
   Monitoring here monitors not only messages but the consumers too, clearing outdated consumers from Redis memory.
-  The message that is held in the stream group pending list for more than `keepAliveTTL` is claimed by next consumer
-  (keeps priority order). Message claiming by other consumer after `keepAliveTTL` protection expires can be restricted to
-  number or reclaims (defaults to 3), this can be set to 0 to throw the message away.
+  A message that is held in the stream group pending list for more than `keepAliveTTL` is claimed by the next consumer (keeps priority order). Message claiming by another consumer after `keepAliveTTL` protection expires can be restricted to a number of reclaims (defaults to 3); this can be set to 0 to throw the message away.
   Claimed message is processed immediately, not re-queued for later processing.
 
 ## `HermesDriverAccessor`
 
 - Singleton object that carries the message/stream message envelope and priority of the message.
-- If handler is executed by dispatcher with RedisProxyListDriver (in reliability mode only) or RedisProxyStreamDriver 
-  (always), user code can call:
+- If a handler is executed by a dispatcher with RedisProxyListDriver (in reliability mode only) or RedisProxyStreamDriver (always), user code can call:
   - `signalProcessingUpdate()` - manual monitor notification (resets protection expiration to `keepAliveTTL`),
-  - `setProcessingStatus($status, $percent)` - manual monitor notification with status or percentage of completion of
-    the task set to the monitor, both values are nullable.
-- User code can't call setters or clean the data of the accessor.
+  - `setProcessingStatus($status, $percent)` - manual monitor notification with status or percentage of completion of the task set to the monitor, both values are optional.
+- User code cannot call setters or clear the data of the `HermesDriverAccessor`.
