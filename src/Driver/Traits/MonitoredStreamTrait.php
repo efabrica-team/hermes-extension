@@ -259,9 +259,9 @@ trait MonitoredStreamTrait
                         }
 
                         $this->redis->rawCommand('XGROUP', 'DELCONSUMER', $queue, $group, $consumer);
-                        $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
                         $statusKey = $this->getStatusKey($monitorData['field']);
                         $this->redis->del($statusKey);
+                        $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
 
                         if ($claimedMessage !== null) {
                             $this->updateEnvelopeStatus();
@@ -416,22 +416,9 @@ trait MonitoredStreamTrait
                     if ($consumerFound) {
                         continue;
                     }
-                    $message = $monitorData['body']['message'] ?? null;
-                    $priority = $monitorData['body']['priority'] ?? null;
-                    if ($message !== null && $priority !== null && $this instanceof DriverInterface) {
-                        $encodedMessage = json_encode(['message' => $message]);
-                        if ($encodedMessage !== false) {
-                            try {
-                                $message = $this->serializer->unserialize($encodedMessage);
-                                $this->send($message, $priority);
-                            } catch (Throwable $exception) {
-                                Debugger::log($exception, Debugger::EXCEPTION);
-                            }
-                        }
-                    }
-                    $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
                     $statusKey = $this->getStatusKey($monitorData['field']);
                     $this->redis->del($statusKey);
+                    $this->redis->hdel($this->monitorHashRedisKey, $monitorData['field']);
                 }
             } finally {
                 try {
