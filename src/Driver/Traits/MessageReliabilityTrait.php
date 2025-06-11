@@ -11,6 +11,7 @@ use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use Throwable;
 use Tomaj\Hermes\Dispatcher;
+use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\EmitterInterface;
 use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
@@ -22,8 +23,6 @@ trait MessageReliabilityTrait
     private RedisProxy $redis;
 
     private ?string $monitorHashRedisKey = null;
-
-    private ?EmitterInterface $myEmitter = null;
 
     private ?string $myIdentifier = null;
 
@@ -41,11 +40,9 @@ trait MessageReliabilityTrait
      */
     public function enableReliableMessageHandling(
         string $monitorKeyPrefix,
-        EmitterInterface $emitter,
         int $keepAliveTTL
     ): void {
         $this->monitorHashRedisKey = $monitorKeyPrefix;
-        $this->myEmitter = $emitter;
         $this->keepAliveTTL = max(60, $keepAliveTTL);
         $this->myIdentifier = Uuid::uuid4()->toString();
         $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
@@ -169,7 +166,7 @@ trait MessageReliabilityTrait
             return;
         }
 
-        if (!$this->myEmitter || !$this->myIdentifier) {
+        if (!$this->myIdentifier) {
             return;
         }
 
@@ -239,7 +236,9 @@ trait MessageReliabilityTrait
                                 }
                                 for ($retry = 0; $retry <= MessageReliabilityInterface::REQUEUE_REPEATS; $retry++) {
                                     try {
-                                        $this->myEmitter->emit($newMessage, $priority);
+                                        if ($this instanceof DriverInterface) {
+                                            $this->send($newMessage, $priority);
+                                        }
                                         break;
                                     } catch (Throwable $exception) {
                                         if ($retry === MessageReliabilityInterface::REQUEUE_REPEATS) {

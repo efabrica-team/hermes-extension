@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved performance, added graceful termination and hermes accessors to all drivers
 - Traits and interfaces moved to separate directories - namespaces changed (Possible BC if implemented / used outside the library)
 - RedisProxySetDriver and RedisProxySortedSetDriver now uses ForkableDriverInterface
+- MessageReliabilityTrait no longer needs EmitterInterface to work, it uses native send() method of DriverInterface (BC)
 
 ## [1.3.1] - 2025-05-01
 ### Fixed
