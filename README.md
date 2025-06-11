@@ -113,6 +113,7 @@ $emitter->emit(new Message(
 - If message reliability is enabled, the messages are re-queued when the dispatcher crashes or is force-stopped. Otherwise, messages can be lost in these cases.
 - If message reliability is enabled, on **POSIX-enabled systems** (loaded `pcntl` and `posix` extensions), the message is monitored by a background heartbeat process (notifying that work is being done on the message approximately every 1 second). If the system is not POSIX-enabled, message processing can still be tracked by using `HermesDriverAccessor`. Notifications from heartbeat or `HermesDriverAccessor` reset the message processing timer. Each message gets processing protection by the monitor for a given `keepAliveTTL`; when this protection expires, the message is re-queued.
 - If priorities are defined, this driver has different behavior among the other `RedisProxy` drivers. The messages are processed from highest to lowest priority, but the driver continues to take messages from the current priority level without returning to the high priority first. This default behavior can be changed to match the behavior that other drivers use by calling `setUseTopPriorityFallback(true)` on the driver object during driver setup.
+- If message reliability is enabled, the message can be duplicated in some circumstances. The user has to implement custom message completion tracking if the message has to be processed only once.
 
 ### `RedisProxyStreamDriver`
 
@@ -123,6 +124,7 @@ $emitter->emit(new Message(
   Monitoring here monitors not only messages but the consumers too, clearing outdated consumers from Redis memory.
   A message that is held in the stream group pending list for more than `keepAliveTTL` is claimed by the next consumer (keeps priority order). Message claiming by another consumer after `keepAliveTTL` protection expires can be restricted to a number of reclaims (defaults to 3); this can be set to 0 to throw the message away.
   Claimed message is processed immediately, not re-queued for later processing.
+- A message can be duplicated in some circumstances. The user has to implement custom message completion tracking if the message has to be processed only once.
 
 ## `HermesDriverAccessor`
 
