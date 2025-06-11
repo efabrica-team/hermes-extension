@@ -12,7 +12,6 @@ use RedisProxy\RedisProxy;
 use Throwable;
 use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\Driver\DriverInterface;
-use Tomaj\Hermes\EmitterInterface;
 use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
 
