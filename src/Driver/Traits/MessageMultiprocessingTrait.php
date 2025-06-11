@@ -50,22 +50,28 @@ trait MessageMultiprocessingTrait
         $parentPid = posix_getppid();
         $this->redis->resetConnectionPool();
 
-        while (true) {
-            if (posix_getpgid($parentPid) === false) {
-                exit(0); // Parent process is killed, so this process ends too ...
-            }
+        if (posix_getpgid($parentPid) === false) {
+            exit(0); // Parent process is stopped, so this process ends too ...
+        }
 
+        while (true) {
             $childProcess();
 
-            for ($i = 0; $i < 20; $i++) {
+            for ($i = 0; $i < 21; $i++) {
                 if (file_exists($flagFile)) {
-                    $content = file_get_contents($flagFile);
+                    $content = @file_get_contents($flagFile);
                     if ($content === 'DONE') {
                         break(2);
                     }
                 }
 
-                usleep(50000);
+                if (posix_getpgid($parentPid) === false) {
+                    break(2);
+                }
+
+                if ($i < 20) {
+                    usleep(50000);
+                }
             }
         }
 
