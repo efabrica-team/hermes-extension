@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Efabrica\HermesExtension\Driver;
 
+use Efabrica\HermesExtension\Driver\Interfaces\MessageReliabilityInterface;
+use Efabrica\HermesExtension\Driver\Interfaces\MonitoredStreamInterface;
+use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use LogicException;
 use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\MessageInterface;
@@ -13,6 +16,8 @@ final class HermesDriverAccessor
     private static ?HermesDriverAccessor $instance = null;
 
     private ?MessageInterface $message = null;
+
+    private ?StreamMessageEnvelope $envelope = null;
 
     private ?int $priority = null;
 
@@ -30,19 +35,30 @@ final class HermesDriverAccessor
         return self::$instance;
     }
 
-    public function setMessageInfo(?MessageInterface $message, ?int $priority): void
+    public function setMessage(?MessageInterface $message, ?int $priority): void
     {
         $this->checkWriteAccess();
 
         $this->message = $message;
+        $this->envelope = null;
         $this->priority = $priority;
     }
 
-    public function clearMessageInfo(): void
+    public function setEnvelope(?StreamMessageEnvelope $envelope): void
     {
         $this->checkWriteAccess();
 
         $this->message = null;
+        $this->envelope = $envelope;
+        $this->priority = $envelope !== null ? $envelope->getPriority() : null;
+    }
+
+    public function clear(): void
+    {
+        $this->checkWriteAccess();
+
+        $this->message = null;
+        $this->envelope = null;
         $this->priority = null;
     }
 
@@ -53,27 +69,57 @@ final class HermesDriverAccessor
         $this->driver = $driver;
     }
 
+    /**
+     * Returns copy of stored message. If the message is stored in envelope
+     * it will return copy of enveloped message. Returns `null` if there is
+     * no message or envelope.
+     */
     public function getMessage(): ?MessageInterface
     {
-        return $this->message;
+        if ($this->message === null && $this->envelope !== null) {
+            return clone $this->envelope->getMessage();
+        }
+        return $this->message ? clone $this->message : null;
     }
 
+    /**
+     * Returns copy of envelope or `null` if there is no envelope.
+     */
+    public function getEnvelope(): ?StreamMessageEnvelope
+    {
+        return $this->envelope ? clone $this->envelope : null;
+    }
+
+    /**
+     * Returns message priority. It the message is stored in envelope
+     * it will return priority from envelope. Returns `null` if there
+     * is no message or envelope.
+     */
     public function getPriority(): ?int
     {
+        if ($this->priority === null && $this->envelope !== null) {
+            return $this->envelope->getPriority();
+        }
         return $this->priority;
     }
 
     public function signalProcessingUpdate(): void
     {
-        if (!$this->driver instanceof MessageReliabilityInterface) {
+        if (!$this->driver instanceof MessageReliabilityInterface
+            && !$this->driver instanceof MonitoredStreamInterface
+        ) {
             return;
         }
 
-        if ($this->message === null || $this->priority === null) {
+        if (($this->message === null && $this->envelope === null) || $this->priority === null) {
             return;
         }
 
-        $this->driver->updateMessageStatus($this->message, $this->priority);
+        if ($this->driver instanceof MessageReliabilityInterface) {
+            $this->driver->updateMessageStatus($this->message, $this->priority);
+        } elseif ($this->driver instanceof MonitoredStreamInterface) {
+            $this->driver->updateEnvelopeStatus($this->envelope);
+        }
     }
 
     /**
@@ -84,16 +130,23 @@ final class HermesDriverAccessor
      */
     public function setProcessingStatus(?string $status = null, ?float $percent = null): void
     {
-        if (!$this->driver instanceof MessageReliabilityInterface) {
+        if (!$this->driver instanceof MessageReliabilityInterface
+            && !$this->driver instanceof MonitoredStreamInterface
+        ) {
             return;
         }
 
-        if ($this->message === null || $this->priority === null) {
+        if (($this->message === null && $this->envelope === null) || $this->priority === null) {
             return;
         }
 
-        $this->driver->updateMessageStatus($this->message, $this->priority);
-        $this->driver->updateMessageProcessingStatus($status, $percent);
+        if ($this->driver instanceof MessageReliabilityInterface) {
+            $this->driver->updateMessageStatus($this->message, $this->priority);
+            $this->driver->updateMessageProcessingStatus($status, $percent);
+        } elseif ($this->driver instanceof MonitoredStreamInterface) {
+            $this->driver->updateEnvelopeStatus($this->envelope);
+            $this->driver->updateEnvelopeProcessingStatus($status, $percent);
+        }
     }
 
     private function checkWriteAccess(): void

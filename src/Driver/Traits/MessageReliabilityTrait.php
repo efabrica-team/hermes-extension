@@ -2,26 +2,26 @@
 
 declare(strict_types=1);
 
-namespace Efabrica\HermesExtension\Driver;
+namespace Efabrica\HermesExtension\Driver\Traits;
 
 use Closure;
-use LogicException;
+use Efabrica\HermesExtension\Driver\HermesDriverAccessor;
+use Efabrica\HermesExtension\Driver\Interfaces\MessageReliabilityInterface;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use Throwable;
 use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\Driver\DriverInterface;
-use Tomaj\Hermes\EmitterInterface;
 use Tomaj\Hermes\Message;
 use Tomaj\Hermes\MessageInterface;
 
 trait MessageReliabilityTrait
 {
+    use MessageMultiprocessingTrait;
+
     private RedisProxy $redis;
 
     private ?string $monitorHashRedisKey = null;
-
-    private ?EmitterInterface $myEmitter = null;
 
     private ?string $myIdentifier = null;
 
@@ -39,11 +39,9 @@ trait MessageReliabilityTrait
      */
     public function enableReliableMessageHandling(
         string $monitorKeyPrefix,
-        EmitterInterface $emitter,
         int $keepAliveTTL
     ): void {
         $this->monitorHashRedisKey = $monitorKeyPrefix;
-        $this->myEmitter = $emitter;
         $this->keepAliveTTL = max(60, $keepAliveTTL);
         $this->myIdentifier = Uuid::uuid4()->toString();
         $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
@@ -53,37 +51,29 @@ trait MessageReliabilityTrait
      * Calls the message processing callback in monitored mode if the reliable messaging is enabled,
      * will fall back to the non-monitored mode otherwise.
      */
-    private function monitorCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
+    private function monitorMessageCallback(Closure $callback, MessageInterface $message, int $foundPriority): void
     {
         $accessor = HermesDriverAccessor::getInstance();
 
-        $accessor->setMessageInfo($message, $foundPriority);
+        $accessor->setMessage($message, $foundPriority);
         $accessor->setProcessingStatus();
         try {
             $this->updateMessageStatus($message, $foundPriority);
-            if ($this->monitorHashRedisKey !== null && extension_loaded('pcntl')) {
-                $flagFile = sys_get_temp_dir() . '/hermes_monitor_' . uniqid() . '-' . $this->myIdentifier . '.flag';
-                @unlink($flagFile);
-
-                $pid = pcntl_fork();
-
-                if ($pid === -1) {
-                    // ERROR, fallback to non-forked routine
+            if ($this->monitorHashRedisKey !== null) {
+                $processMessage = function () use ($callback, $message, $foundPriority) {
                     $callback($message, $foundPriority);
-                } elseif ($pid) {
-                    // MAIN PROCESS
-                    $this->forkMainProcess($callback, $message, $foundPriority, $pid, $flagFile);
-                } else {
-                    // CHILD PROCESS
-                    $this->forkChildProcess($message, $foundPriority, $flagFile);
-                }
+                };
+                $notify = function () use ($message, $foundPriority) {
+                    $this->updateMessageStatus($message, $foundPriority);
+                };
+                $this->commonMainProcess($processMessage, $notify, $processMessage);
             } else {
                 $callback($message, $foundPriority);
             }
             $this->updateMessageStatus();
         } finally {
             $accessor->setProcessingStatus();
-            $accessor->clearMessageInfo();
+            $accessor->clear();
         }
     }
 
@@ -118,9 +108,11 @@ trait MessageReliabilityTrait
 
         try {
             $encoded = json_encode($status);
-            if ($encoded !== false && $this->keepAliveTTL !== null) {
+            if ($encoded !== false) {
                 $this->redis->hset($this->monitorHashRedisKey, $key, $encoded);
-                $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
+                if ($this->keepAliveTTL !== null) {
+                    $this->redis->setex($agentKey, $this->keepAliveTTL, (string)$status->timestamp);
+                }
             }
         } catch (Throwable $exception) {
         }
@@ -173,7 +165,7 @@ trait MessageReliabilityTrait
             return;
         }
 
-        if (!$this->myEmitter || !$this->myIdentifier) {
+        if (!$this->myIdentifier) {
             return;
         }
 
@@ -243,7 +235,9 @@ trait MessageReliabilityTrait
                                 }
                                 for ($retry = 0; $retry <= MessageReliabilityInterface::REQUEUE_REPEATS; $retry++) {
                                     try {
-                                        $this->myEmitter->emit($newMessage, $priority);
+                                        if ($this instanceof DriverInterface) {
+                                            $this->send($newMessage, $priority);
+                                        }
                                         break;
                                     } catch (Throwable $exception) {
                                         if ($retry === MessageReliabilityInterface::REQUEUE_REPEATS) {
@@ -327,78 +321,6 @@ trait MessageReliabilityTrait
             $this->redis->del($statusKey);
         } catch (Throwable $exception) {
             // Just stop all exceptions
-        }
-    }
-
-    /**
-     * Processes message in main process context.
-     *
-     * @internal Do not use this method outside trait!
-     */
-    private function forkMainProcess(
-        callable $callback,
-        MessageInterface $message,
-        int $foundPriority,
-        int $pid,
-        string $flagFile
-    ): void {
-        try {
-            $this->redis->resetConnectionPool();
-            $callback($message, $foundPriority);
-        } finally {
-            file_put_contents($flagFile, 'DONE');
-
-            pcntl_waitpid($pid, $status);
-            @unlink($flagFile);
-        }
-    }
-
-    /**
-     * Periodically signaling message processing until terminated or until parent is stopped/killed.
-     *
-     * @internal Do not use this method outside trait!
-     */
-    private function forkChildProcess(MessageInterface $message, int $foundPriority, string $flagFile): void
-    {
-        $parentPid = posix_getppid();
-        $this->redis->resetConnectionPool();
-
-        while (true) {
-            if (posix_getpgid($parentPid) === false) {
-                exit(0); // Parent process is killed, so this ends too ...
-            }
-
-            $this->updateMessageStatus($message, $foundPriority);
-
-            if (file_exists($flagFile)) {
-                $content = file_get_contents($flagFile);
-                if ($content === 'DONE') {
-                    break;
-                }
-            }
-
-            sleep(1);
-        }
-
-        exit(0);
-    }
-
-    /**
-     * This tests the call stack if the caller is {@see DriverInterface}.
-     *
-     * @internal Do not use this method outside trait!
-     */
-    private function checkWriteAccess(): void
-    {
-        $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2);
-        $callerClass = $trace[1]['class'] ?? '';
-
-        if ($callerClass === '' || !is_a($callerClass, DriverInterface::class, true)) {
-            throw new LogicException(sprintf(
-                'Method updateMessageStatus can only be called from classes implementing "%s" or from "%s".',
-                DriverInterface::class,
-                HermesDriverAccessor::class
-            ));
         }
     }
 }

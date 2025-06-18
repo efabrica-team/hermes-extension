@@ -5,6 +5,11 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Driver;
 
 use Closure;
+use Efabrica\HermesExtension\Driver\Interfaces\ForkableDriverInterface;
+use Efabrica\HermesExtension\Driver\Interfaces\QueueAwareInterface;
+use Efabrica\HermesExtension\Driver\Traits\ForkableDriverTrait;
+use Efabrica\HermesExtension\Driver\Traits\ProcessSignalTrait;
+use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
 use RedisProxy\RedisProxy;
@@ -20,13 +25,15 @@ use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 
-final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
+final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface, ForkableDriverInterface
 {
     use MaxItemsTrait;
     use ShutdownTrait;
     use SerializerAwareTrait;
     use HeartbeatBehavior;
     use QueueAwareTrait;
+    use ProcessSignalTrait;
+    use ForkableDriverTrait;
 
     /** @var array<int, string>  */
     private array $queues = [];
@@ -71,6 +78,10 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
+        $this->handleSignals();
+        $accessor = HermesDriverAccessor::getInstance();
+        $accessor->setDriver($this);
+
         $queues = $this->queues;
         krsort($queues);
         $counter = 0;
@@ -90,12 +101,21 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
                     continue;
                 }
 
-                $messageString = $this->pop($this->getKey($priority));
-                $foundPriority = $priority;
+                $messageString = null;
+                $foundPriority = null;
+
+                if ($this->canContinue() && !$this->hasActiveChildFork()) {
+                    $messageString = $this->pop($this->getKey($priority));
+                    $foundPriority = $priority;
+                }
 
                 if ($messageString !== null) {
                     break;
                 }
+            }
+
+            if (!$this->canContinue() && $messageString === null) {
+                break;
             }
 
             if ($messageString !== null) {
@@ -104,7 +124,13 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface
                     $counter = 0;
                 }
                 $message = $this->serializer->unserialize($messageString);
-                $callback($message, $foundPriority);
+                $accessor->setMessage($message, $foundPriority);
+                $this->doForkProcess(
+                    static function () use ($callback, $message, $foundPriority) {
+                        $callback($message, $foundPriority);
+                    }
+                );
+                $accessor->clear();
                 $this->incrementProcessedItems();
             } elseif ($this->refreshInterval) {
                 $this->checkShutdown();
