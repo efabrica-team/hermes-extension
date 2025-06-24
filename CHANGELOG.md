@@ -6,14 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Stream based driver
-
+## [2.0.0] - 2025-06-24
 ### Changed
 - Improved performance, added graceful termination and hermes accessors to all drivers
 - Traits and interfaces moved to separate directories - namespaces changed (Possible BC if implemented / used outside the library)
 - RedisProxySetDriver and RedisProxySortedSetDriver now uses ForkableDriverInterface
 - MessageReliabilityTrait no longer needs EmitterInterface to work, it uses native send() method of DriverInterface (BC)
+
+### Added
+- Stream based driver
 
 ## [1.3.1] - 2025-05-01
 ### Fixed
@@ -64,7 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RedisProxySortedSetDriver
 - DummyDriver (for testing purposes)
 
-[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/1.3.1...main
+[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/2.0.0...main
+[2.0.0]: https://github.com/efabrica-team/hermes-extension/compare/1.3.1...2.0.0
 [1.3.1]: https://github.com/efabrica-team/hermes-extension/compare/1.3.0...1.3.1
 [1.3.0]: https://github.com/efabrica-team/hermes-extension/compare/1.2.1...1.3.0
 [1.2.1]: https://github.com/efabrica-team/hermes-extension/compare/1.2.0...1.2.1
