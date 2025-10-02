@@ -45,6 +45,7 @@ final class HermesWorker extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $output->writeln('Hermes worker start.');
         $queues = $this->getRegisteredQueues();
         $prioritiesSet = [];
 
