@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Heartbeat;
 
 use Tomaj\Hermes\Shutdown\ShutdownException;
+use function gethostname;
+use function getmypid;
 
 trait HeartbeatBehavior
 {

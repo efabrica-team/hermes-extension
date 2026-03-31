@@ -6,6 +6,9 @@ namespace Efabrica\HermesExtension\Heartbeat;
 
 use DateTime;
 use RedisProxy\RedisProxy;
+use function is_string;
+use function json_decode;
+use function json_encode;
 
 final class RedisProxyStorage extends AbstractStorage
 {

@@ -14,8 +14,10 @@ use Efabrica\HermesExtension\Driver\Traits\ProcessSignalTrait;
 use Efabrica\HermesExtension\Driver\Traits\QueueAwareTrait;
 use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
+use Efabrica\HermesExtension\Metrics\PrometheusMetrics;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
+use Throwable;
 use Tomaj\Hermes\Dispatcher;
 use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\Driver\MaxItemsTrait;
@@ -26,6 +28,12 @@ use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\SerializeException;
 use Tomaj\Hermes\Shutdown\ShutdownException;
+use function count;
+use function in_array;
+use function intval;
+use function is_string;
+use function krsort;
+use function usleep;
 
 final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface, MessageReliabilityInterface, ForkableDriverInterface
 {
@@ -47,6 +55,10 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
 
     private bool $useTopPriorityFallback = false;
 
+    protected ?PrometheusMetrics $prometheusMetrics = null;
+
+    protected bool $prometheusInit = false;
+
     public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1)
     {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
@@ -59,6 +71,11 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
     public function setUseTopPriorityFallback(bool $useTopPriorityFallback): void
     {
         $this->useTopPriorityFallback = $useTopPriorityFallback;
+    }
+
+    public function setPrometheusMetrics(PrometheusMetrics $prometheusMetrics): void
+    {
+        $this->prometheusMetrics = $prometheusMetrics;
     }
 
     /**
@@ -85,6 +102,12 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
      */
     public function wait(Closure $callback, array $priorities = []): void
     {
+        if (!$this->prometheusInit) {
+            $this->prometheusInit = true;
+            if ($this->prometheusMetrics) {
+                $this->prometheusMetrics->workerProcessStart();
+            }
+        }
         $this->handleSignals();
         $accessor = HermesDriverAccessor::getInstance();
         $accessor->setDriver($this);
@@ -92,6 +115,9 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
         krsort($queues);
         try {
             while (true) {
+                if ($this->prometheusMetrics) {
+                    $this->prometheusMetrics->workerProcessStep();
+                }
                 $this->checkShutdown();
                 $this->checkToBeKilled();
                 if (!$this->shouldProcessNext()) {
@@ -128,10 +154,30 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                             break;
                         }
                         $this->ping(HermesProcess::STATUS_PROCESSING);
+                        if ($this->prometheusMetrics) {
+                            $this->prometheusMetrics->workerProcessStep();
+                        }
                         $message = $this->serializer->unserialize($messageString);
+                        if ($this->prometheusMetrics) {
+                            $this->prometheusMetrics->startProcessingMessage($message->getType());
+                        }
+                        $accessor->setMessage($message, $foundPriority);
                         $this->doForkProcess(
                             function () use ($callback, $message, $foundPriority) {
-                                $this->monitorMessageCallback($callback, $message, $foundPriority);
+                                try {
+                                    $result = $this->monitorMessageCallback($callback, $message, $foundPriority);
+                                } catch (Throwable $exception) {
+                                    $result = false;
+                                    throw $exception;
+                                } finally {
+                                    if ($this->prometheusMetrics) {
+                                        $this->prometheusMetrics->incrementMessageCounter(
+                                            $message->getType(),
+                                            $result
+                                        );
+                                        $this->prometheusMetrics->finishProcessingMessage($message->getType());
+                                    }
+                                }
                             }
                         );
                         $this->incrementProcessedItems();
@@ -162,6 +208,9 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
         } finally {
             $this->removeMessageStatus();
             $accessor->clear();
+            if ($this->prometheusMetrics) {
+                $this->prometheusMetrics->workerProcessStep();
+            }
         }
     }
 

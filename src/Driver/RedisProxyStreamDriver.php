@@ -16,6 +16,7 @@ use Efabrica\HermesExtension\Heartbeat\HeartbeatBehavior;
 use Efabrica\HermesExtension\Heartbeat\HermesProcess;
 use Efabrica\HermesExtension\Helpers\RedisResponse;
 use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
+use Efabrica\HermesExtension\Metrics\PrometheusMetrics;
 use Ramsey\Uuid\Uuid;
 use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
@@ -32,6 +33,19 @@ use Tomaj\Hermes\MessageInterface;
 use Tomaj\Hermes\MessageSerializer;
 use Tomaj\Hermes\Shutdown\ShutdownException;
 use Tracy\Debugger;
+use function count;
+use function file_get_contents;
+use function floor;
+use function in_array;
+use function intval;
+use function is_array;
+use function is_string;
+use function krsort;
+use function microtime;
+use function preg_match;
+use function sha1_file;
+use function sprintf;
+use function usleep;
 
 /**
  * @phpstan-type StreamMessageResponse array<int, array{
@@ -63,6 +77,10 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
 
     private float $refreshInterval;
 
+    protected ?PrometheusMetrics $prometheusMetrics = null;
+
+    protected bool $prometheusInit = false;
+
     /**
      * @throws NotSupportedException
      */
@@ -74,6 +92,11 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         $this->serializer = new MessageSerializer();
 
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
+    }
+
+    public function setPrometheusMetrics(PrometheusMetrics $prometheusMetrics): void
+    {
+        $this->prometheusMetrics = $prometheusMetrics;
     }
 
     public function send(MessageInterface $message, int $priority = Dispatcher::DEFAULT_PRIORITY): bool
@@ -118,6 +141,12 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
      */
     public function wait(Closure $callback, array $priorities): void
     {
+        if (!$this->prometheusInit) {
+            $this->prometheusInit = true;
+            if ($this->prometheusMetrics) {
+                $this->prometheusMetrics->workerProcessStart();
+            }
+        }
         $this->handleSignals();
 
         $accessor = HermesDriverAccessor::getInstance();
@@ -133,6 +162,9 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             }
             $this->ping(HermesProcess::STATUS_IDLE);
             while (true) {
+                if ($this->prometheusMetrics) {
+                    $this->prometheusMetrics->workerProcessStep();
+                }
                 $this->updateEnvelopeStatus();
                 $this->checkShutdown();
                 $this->checkToBeKilled();
@@ -151,11 +183,32 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                 }
                 if ($envelope !== null) {
                     $this->ping(HermesProcess::STATUS_PROCESSING);
+                    if ($this->prometheusMetrics) {
+                        $this->prometheusMetrics->workerProcessStep();
+                    }
+                    if ($this->prometheusMetrics) {
+                        $this->prometheusMetrics->startProcessingMessage($envelope->getMessage()->getType());
+                    }
                     $this->incrementProcessedItems();
                     try {
                         $this->doForkProcess(
                             function () use ($callback, $envelope) {
-                                $this->monitorEnvelopeCallback($callback, $envelope);
+                                try {
+                                    $result = $this->monitorEnvelopeCallback($callback, $envelope);
+                                } catch (Throwable $exception) {
+                                    $result = false;
+                                    throw $exception;
+                                } finally {
+                                    if ($this->prometheusMetrics) {
+                                        $this->prometheusMetrics->incrementMessageCounter(
+                                            $envelope->getMessage()->getType(),
+                                            $result
+                                        );
+                                        $this->prometheusMetrics->finishProcessingMessage(
+                                            $envelope->getMessage()->getType()
+                                        );
+                                    }
+                                }
                             }
                         );
                         $this->updateEnvelopeStatus();
@@ -184,6 +237,9 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
             $this->ping(HermesProcess::STATUS_KILLED);
             throw $exception;
         } finally {
+            if ($this->prometheusMetrics) {
+                $this->prometheusMetrics->workerProcessStep();
+            }
             $accessor->clear();
             $this->removeConsumer($queues);
         }

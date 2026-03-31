@@ -11,9 +11,20 @@ use RedisProxy\RedisProxy;
 use RedisProxy\RedisProxyException;
 use RuntimeException;
 use Throwable;
-use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\Driver\SerializerAwareTrait;
 use Tracy\Debugger;
+use function count;
+use function gethostname;
+use function getmypid;
+use function is_string;
+use function json_decode;
+use function json_encode;
+use function max;
+use function microtime;
+use function min;
+use function round;
+use function sprintf;
+use function usort;
 
 /**
  * @phpstan-type Monitor array{
@@ -84,26 +95,28 @@ trait MonitoredStreamTrait
         $this->myPID = getmypid() !== false ? getmypid() : 'unknown';
     }
 
-    private function monitorEnvelopeCallback(Closure $callback, StreamMessageEnvelope $envelope): void
+    private function monitorEnvelopeCallback(Closure $callback, StreamMessageEnvelope $envelope): bool
     {
         $accessor = HermesDriverAccessor::getInstance();
 
         $accessor->setEnvelope($envelope);
         $accessor->setProcessingStatus();
+        $result = false;
         try {
             $this->updateEnvelopeStatus($envelope);
-            $processMessage = function () use ($callback, $envelope) {
-                $callback($envelope->getMessage(), $envelope->getPriority());
+            $processMessage = function () use ($callback, $envelope): bool {
+                return $callback($envelope->getMessage(), $envelope->getPriority());
             };
             $notify = function () use ($envelope) {
                 $this->updateEnvelopeStatus($envelope);
             };
-            $this->commonMainProcess($processMessage, $notify, $processMessage);
+            $result = $this->commonMainProcess($processMessage, $notify, $processMessage);
             $this->updateEnvelopeStatus();
         } finally {
             $accessor->setProcessingStatus();
             $accessor->clear();
         }
+        return $result;
     }
 
     /**

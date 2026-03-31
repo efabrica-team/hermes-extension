@@ -2,6 +2,19 @@
 
 namespace Efabrica\HermesExtension\Driver\Traits;
 
+use function extension_loaded;
+use function pcntl_fork;
+use function pcntl_signal_dispatch;
+use function pcntl_sigprocmask;
+use function pcntl_waitpid;
+use function usleep;
+use const SIG_BLOCK;
+use const SIG_SETMASK;
+use const SIGHUP;
+use const SIGINT;
+use const SIGQUIT;
+use const SIGTERM;
+
 trait ForkableDriverTrait
 {
     private bool $forkProcess = false;

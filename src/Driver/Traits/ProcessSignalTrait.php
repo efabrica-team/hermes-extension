@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 namespace Efabrica\HermesExtension\Driver\Traits;
 
+use function extension_loaded;
+use function is_callable;
+use function pcntl_signal;
+use function pcntl_signal_get_handler;
+use const SIGHUP;
+use const SIGINT;
+use const SIGQUIT;
+use const SIGTERM;
+
 trait ProcessSignalTrait
 {
     private bool $signalShutdown = false;

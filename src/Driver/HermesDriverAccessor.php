@@ -10,6 +10,10 @@ use Efabrica\HermesExtension\Message\StreamMessageEnvelope;
 use LogicException;
 use Tomaj\Hermes\Driver\DriverInterface;
 use Tomaj\Hermes\MessageInterface;
+use function debug_backtrace;
+use function is_a;
+use function sprintf;
+use const DEBUG_BACKTRACE_IGNORE_ARGS;
 
 final class HermesDriverAccessor
 {

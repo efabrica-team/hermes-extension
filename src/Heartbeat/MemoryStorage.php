@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Efabrica\HermesExtension\Heartbeat;
 
 use DateTime;
+use function array_values;
 
 final class MemoryStorage extends AbstractStorage
 {

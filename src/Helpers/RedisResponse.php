@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 namespace Efabrica\HermesExtension\Helpers;
 
+use function count;
+use function filter_var;
+use function is_numeric;
+use function is_string;
+use const FILTER_NULL_ON_FAILURE;
+use const FILTER_VALIDATE_FLOAT;
+use const FILTER_VALIDATE_INT;
+
 final class RedisResponse
 {
     /**
