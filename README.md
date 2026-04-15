@@ -58,7 +58,7 @@ use Symfony\Component\Console\Application;
 
 
 $application = new Application();
-$application->add(new HermesWorker($dispatcher));
+$application->addCommand(new HermesWorker($dispatcher));
 $application->run();
 ```
 
