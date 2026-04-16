@@ -36,6 +36,8 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
     use ProcessSignalTrait;
     use ForkableDriverTrait;
 
+    private const int FLOAT_TO_MICROSECONDS = 1000000;
+
     /** @var array<int, string>  */
     private array $queues = [];
 
@@ -63,13 +65,13 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
     public function send(MessageInterface $message, int $priority = Dispatcher::DEFAULT_PRIORITY): bool
     {
         if ($message->getExecuteAt() !== null && $message->getExecuteAt() > microtime(true)) {
-            if (!$this->scheduleKey) {
+            if ($this->scheduleKey === null) {
                 throw new InvalidArgumentException('Schedule key is not configured');
             }
             $this->redis->zadd($this->scheduleKey, $message->getExecuteAt(), $this->serializer->serialize($message));
         } else {
             $key = $this->getKey($priority);
-            $this->redis->zadd($key, $message->getExecuteAt() === null ? microtime(true) : $message->getExecuteAt(), $this->serializer->serialize($message));
+            $this->redis->zadd($key, $message->getExecuteAt() ?? microtime(true), $this->serializer->serialize($message));
         }
         return true;
     }
@@ -111,16 +113,16 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
             }
 
             // check schedule
-            if ($this->scheduleKey) {
+            if ($this->scheduleKey !== null) {
                 $microTime = microtime(true);
                 $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string) $microTime, ['limit' => [0, 1]]);
-                for ($i = 1; $i <= count($messageStrings); $i++) {
+                for ($i = 1, $iMax = count($messageStrings); $i <= $iMax; $i++) {
                     if (!$this->canContinue()) {
                         break 2;
                     }
 
                     $messageString = $this->pop($this->scheduleKey);
-                    if (!$messageString) {
+                    if ($messageString === null) {
                         break;
                     }
                     $scheduledMessage = $this->serializer->unserialize($messageString);
@@ -136,7 +138,7 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
             $foundPriority = null;
 
             foreach ($queues as $priority => $name) {
-                if (count($priorities) > 0 && !in_array($priority, $priorities)) {
+                if (count($priorities) > 0 && !in_array($priority, $priorities, true)) {
                     continue;
                 }
                 if ($messageString !== null) {
@@ -149,7 +151,7 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                 }
             }
 
-            if (!$this->canContinue() && $messageString === null) {
+            if ($messageString === null && !$this->canContinue()) {
                 break;
             }
 
@@ -164,11 +166,11 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                 );
                 $accessor->clear();
                 $this->incrementProcessedItems();
-            } elseif ($this->refreshInterval) {
+            } elseif ($this->refreshInterval > 0) {
                 $this->checkShutdown();
                 $this->checkToBeKilled();
                 $this->ping(HermesProcess::STATUS_IDLE);
-                usleep(intval($this->refreshInterval * 1000000));
+                usleep((int)($this->refreshInterval * self::FLOAT_TO_MICROSECONDS));
             }
         }
     }

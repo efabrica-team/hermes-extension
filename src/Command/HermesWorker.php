@@ -28,8 +28,8 @@ final class HermesWorker extends Command
     {
         $this->setDescription('Handle hermes messages');
 
-        $queues = $this->getRegisteredQueues();
-        if ($queues) {
+        $queues = $this->getRegisteredQueues() ?? [];
+        if ($queues !== []) {
             $queuesHint = '';
             foreach ($queues as $priority => $queue) {
                 $queuesHint .= PHP_EOL . "<info>{$priority}</info>: <comment>{$queue}</comment>";
@@ -46,10 +46,10 @@ final class HermesWorker extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $output->writeln('Hermes worker start.');
-        $queues = $this->getRegisteredQueues();
+        $queues = $this->getRegisteredQueues() ?? [];
         $prioritiesSet = [];
 
-        if ($queues) {
+        if ($queues !== []) {
             /** @var string[]|null $prioritiesInput */
             $prioritiesInput = $input->getOption('restrict-priority');
             if (is_array($prioritiesInput)) {

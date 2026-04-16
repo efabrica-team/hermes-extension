@@ -31,6 +31,7 @@ final class RedisProxyStorage extends AbstractStorage
         $this->redis->hset($this->key, $processIdentifier, json_encode($data) ?: '{}');
     }
 
+    /** @return HermesProcess[] */
     public function load(): array
     {
         $processes = [];
@@ -40,7 +41,7 @@ final class RedisProxyStorage extends AbstractStorage
             }
 
             $process = $this->createHermesProcessFromRedisValue($value);
-            if ($process) {
+            if ($process instanceof HermesProcess) {
                 $processes[] = $process;
             }
         }

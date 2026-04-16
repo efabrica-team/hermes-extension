@@ -53,8 +53,10 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     use MonitoredStreamTrait;
     use ProcessSignalTrait;
 
-    private const STREAM_CONSUMERS_GROUP = 'consumers';
-    private const MESSAGE_ID_PATTERN = '/[1-9]\d{9,12}-\d+$/';
+    private const string STREAM_CONSUMERS_GROUP = 'consumers';
+    private const string MESSAGE_ID_PATTERN = '/[1-9]\d{9,12}-\d+$/';
+    private const int FLOAT_TO_MICROSECONDS = 1000000;
+    private const int DEFAULT_TTL = 60;
 
     /** @var array<int, string> */
     private array $queues = [];
@@ -66,8 +68,13 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
     /**
      * @throws NotSupportedException
      */
-    public function __construct(RedisProxy $redis, string $key, string $monitorHashRedisKey, int $keepAliveTTL = 60, float $refreshInterval = 1)
-    {
+    public function __construct(
+        RedisProxy $redis,
+        string $key,
+        string $monitorHashRedisKey,
+        int $keepAliveTTL = self::DEFAULT_TTL,
+        float $refreshInterval = 1
+    ) {
         $this->redis = $redis;
         $this->refreshInterval = $refreshInterval;
         $this->initMonitoredStream($monitorHashRedisKey, Uuid::uuid4()->toString(), $keepAliveTTL);
@@ -95,7 +102,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         try {
             $result = $this->redis->zadd(
                 $key,
-                (int)floor($message->getExecuteAt() * 1000000),
+                (int)floor($message->getExecuteAt() * self::FLOAT_TO_MICROSECONDS),
                 $this->serializer->serialize($message),
             );
             return $result === 1;
@@ -173,11 +180,11 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
                     break;
                 }
 
-                if ($this->refreshInterval) {
+                if ($this->refreshInterval > 0) {
                     $this->checkShutdown();
                     $this->checkToBeKilled();
                     $this->ping(HermesProcess::STATUS_IDLE);
-                    usleep(intval($this->refreshInterval) * 1000000);
+                    usleep((int)$this->refreshInterval * self::FLOAT_TO_MICROSECONDS);
                 }
             }
         } catch (ShutdownException $exception) {
@@ -359,7 +366,7 @@ final class RedisProxyStreamDriver implements DriverInterface, QueueAwareInterfa
         $scriptFile = __DIR__ . '/../Scripts/delayedMessages.lua';
         $scriptSha = $this->getScriptSha($scriptFile);
 
-        $time = (int)floor(microtime(true) * 1000000);
+        $time = (int)floor(microtime(true) * self::FLOAT_TO_MICROSECONDS);
 
         foreach ($queues as $priority => $queue) {
             try {

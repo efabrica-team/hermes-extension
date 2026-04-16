@@ -35,6 +35,10 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface,
     use ProcessSignalTrait;
     use ForkableDriverTrait;
 
+    private const int FLOAT_TO_MICROTIME = 1000000;
+
+    private const int DEFAULT_PING_ITERATION = 10;
+
     /** @var array<int, string>  */
     private array $queues = [];
 
@@ -44,8 +48,12 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface,
 
     private int $iterationToPing;
 
-    public function __construct(RedisProxy $redis, string $key, float $refreshInterval = 1, int $iterationToPing = 10)
-    {
+    public function __construct(
+        RedisProxy $redis,
+        string $key,
+        float $refreshInterval = 1,
+        int $iterationToPing = self::DEFAULT_PING_ITERATION
+    ) {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
 
         $this->redis = $redis;
@@ -132,14 +140,14 @@ final class RedisProxySetDriver implements DriverInterface, QueueAwareInterface,
                 );
                 $accessor->clear();
                 $this->incrementProcessedItems();
-            } elseif ($this->refreshInterval) {
+            } elseif ($this->refreshInterval > 0) {
                 $this->checkShutdown();
                 $this->checkToBeKilled();
                 if ($counter % $this->iterationToPing === 0) {
                     $this->ping(HermesProcess::STATUS_IDLE);
                     $counter = 0;
                 }
-                usleep(intval($this->refreshInterval * 1000000));
+                usleep((int)($this->refreshInterval * self::FLOAT_TO_MICROTIME));
             }
         }
     }

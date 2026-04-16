@@ -165,7 +165,7 @@ trait MessageReliabilityTrait
             return;
         }
 
-        if (!$this->myIdentifier) {
+        if ($this->myIdentifier === null) {
             return;
         }
 

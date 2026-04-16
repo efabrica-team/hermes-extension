@@ -10,6 +10,10 @@ use Tomaj\Hermes\Driver\DriverInterface;
 
 trait MessageMultiprocessingTrait
 {
+    private const int DEAD_CHECKS_LIMIT = 3;
+
+    private const int WAIT_FOR_DONE_CYCLE_COUNT = 21;
+
     private RedisProxy $redis;
 
     private function commonMainProcess(Closure $mainProcess, Closure $childProcess, Closure $noForkProcess): void
@@ -20,9 +24,9 @@ trait MessageMultiprocessingTrait
 
             $pid = pcntl_fork();
 
-            if ($pid == -1) {
+            if ($pid === -1) {
                 $noForkProcess();
-            } elseif ($pid) {
+            } elseif ($pid !== 0) {
                 $this->commonForkMainProcess($mainProcess, $pid, $flagFile);
             } else {
                 $this->commonForkChildProcess($childProcess, $flagFile);
@@ -63,7 +67,7 @@ trait MessageMultiprocessingTrait
         while (true) {
             $childProcess();
 
-            for ($i = 0; $i < 21; $i++) {
+            for ($i = 0; $i < self::WAIT_FOR_DONE_CYCLE_COUNT; $i++) {
                 if (file_exists($flagFile)) {
                     $content = @file_get_contents($flagFile);
                     if ($content === 'DONE') {
@@ -75,7 +79,7 @@ trait MessageMultiprocessingTrait
                     break(2);
                 }
 
-                if ($i < 20) {
+                if ($i < self::WAIT_FOR_DONE_CYCLE_COUNT - 1) {
                     usleep(50000);
                 }
             }
@@ -111,18 +115,18 @@ trait MessageMultiprocessingTrait
     {
         $deadChecks = 0;
 
-        for ($i = 0; $i < 3; $i++) { // 3 test passes
+        for ($i = 0; $i < self::DEAD_CHECKS_LIMIT; $i++) { // 3 test passes
             if (posix_getpgid($parentPid) === false && posix_kill($parentPid, 0) === false) {
                 $deadChecks++;
             } else {
                 return false; // parent isn't dead
             }
 
-            if ($i < 2) {
+            if ($i < self::DEAD_CHECKS_LIMIT - 1) {
                 usleep(1000);
             }
         }
 
-        return $deadChecks === 3; // 3× positive check = dead parent
+        return $deadChecks === self::DEAD_CHECKS_LIMIT; // 3× positive check = dead parent
     }
 }

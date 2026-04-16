@@ -79,7 +79,7 @@ final class HermesDriverAccessor
         if ($this->message === null && $this->envelope !== null) {
             return clone $this->envelope->getMessage();
         }
-        return $this->message ? clone $this->message : null;
+        return $this->message !== null ? clone $this->message : null;
     }
 
     /**
@@ -87,7 +87,7 @@ final class HermesDriverAccessor
      */
     public function getEnvelope(): ?StreamMessageEnvelope
     {
-        return $this->envelope ? clone $this->envelope : null;
+        return $this->envelope !== null ? clone $this->envelope : null;
     }
 
     /**

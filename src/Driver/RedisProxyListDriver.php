@@ -38,6 +38,8 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
     use ForkableDriverTrait;
     use ProcessSignalTrait;
 
+    private const int FLOAT_TO_MICROTIME = 1000000;
+
     /** @var array<int, string>  */
     private array $queues = [];
 
@@ -152,11 +154,11 @@ final class RedisProxyListDriver implements DriverInterface, QueueAwareInterface
                     break;
                 }
 
-                if ($this->refreshInterval) {
+                if ($this->refreshInterval > 0) {
                     $this->checkShutdown();
                     $this->checkToBeKilled();
                     $this->ping(HermesProcess::STATUS_IDLE);
-                    usleep(intval($this->refreshInterval * 1000000));
+                    usleep((int)($this->refreshInterval * self::FLOAT_TO_MICROTIME));
                 }
             }
         } finally {

@@ -33,7 +33,7 @@ trait ForkableDriverTrait
             if ($pid === -1) {
                 $this->childPid = null;
                 $callback();
-            } elseif ($pid) {
+            } elseif ($pid !== 0) {
                 // MAIN PROCESS
                 $this->childPid = $pid;
                 while (true) {
