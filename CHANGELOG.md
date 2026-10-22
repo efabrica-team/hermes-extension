@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-10-22
 ### Fixed
 - RedisProxySortedSetDriver moves scheduled messages in batches and never pops not-yet-due messages
 
@@ -72,7 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RedisProxySortedSetDriver
 - DummyDriver (for testing purposes)
 
-[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/2.1.0...main
+[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/2.1.1...main
+[2.1.1]: https://github.com/efabrica-team/hermes-extension/compare/2.1.0...2.1.1
 [2.1.0]: https://github.com/efabrica-team/hermes-extension/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/efabrica-team/hermes-extension/compare/1.3.1...2.0.0
 [1.3.1]: https://github.com/efabrica-team/hermes-extension/compare/1.3.0...1.3.1
