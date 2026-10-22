@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-22
 ### Added
 - support for PHP 8.5
 - support for PHP 8.6
@@ -81,7 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RedisProxySortedSetDriver
 - DummyDriver (for testing purposes)
 
-[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/3.0.0...main
+[Unreleased]: https://github.com/efabrica-team/hermes-extension/compare/3.1.0...main
+[3.1.0]: https://github.com/efabrica-team/hermes-extension/compare/3.0.0...3.1.0
 [3.0.0]: https://github.com/efabrica-team/hermes-extension/compare/2.1.0...3.0.0
 [2.1.0]: https://github.com/efabrica-team/hermes-extension/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/efabrica-team/hermes-extension/compare/1.3.1...2.0.0
