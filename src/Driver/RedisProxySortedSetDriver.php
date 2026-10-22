@@ -45,13 +45,16 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
 
     private ?string $scheduleKey;
 
-    public function __construct(RedisProxy $redis, string $key, ?string $scheduleKey = null, float $refreshInterval = 1)
+    private int $scheduleBatchSize;
+
+    public function __construct(RedisProxy $redis, string $key, ?string $scheduleKey = null, float $refreshInterval = 1, int $scheduleBatchSize = 100)
     {
         $this->setupPriorityQueue($key, Dispatcher::DEFAULT_PRIORITY);
 
         $this->redis = $redis;
         $this->refreshInterval = $refreshInterval;
         $this->scheduleKey = $scheduleKey;
+        $this->scheduleBatchSize = max(1, $scheduleBatchSize);
         $this->serializer = new MessageSerializer();
     }
 
@@ -111,25 +114,11 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
             }
 
             // check schedule
-            if ($this->scheduleKey) {
-                $microTime = microtime(true);
-                $messageStrings = $this->redis->zrangebyscore($this->scheduleKey, '-inf', (string) $microTime, ['limit' => [0, 1]]);
-                for ($i = 1; $i <= count($messageStrings); $i++) {
-                    if (!$this->canContinue()) {
-                        break 2;
-                    }
-
-                    $messageString = $this->pop($this->scheduleKey);
-                    if (!$messageString) {
-                        break;
-                    }
-                    $scheduledMessage = $this->serializer->unserialize($messageString);
-                    $this->send($scheduledMessage);
-
-                    if ($scheduledMessage->getExecuteAt() > $microTime) {
-                        break;
-                    }
+            if ($this->scheduleKey !== null) {
+                if (!$this->canContinue()) {
+                    break;
                 }
+                $this->moveDueScheduledMessages($this->scheduleKey);
             }
 
             $messageString = null;
@@ -170,6 +159,27 @@ final class RedisProxySortedSetDriver implements DriverInterface, QueueAwareInte
                 $this->ping(HermesProcess::STATUS_IDLE);
                 usleep(intval($this->refreshInterval * 1000000));
             }
+        }
+    }
+
+    /**
+     * Moves up to scheduleBatchSize due messages from schedule to the queue.
+     * Only the worker whose ZREM succeeds moves the message, so not-yet-due messages are never popped
+     * and concurrent workers don't duplicate them.
+     *
+     * @throws SerializeException
+     * @throws UnknownPriorityException
+     * @throws RedisProxyException
+     */
+    private function moveDueScheduledMessages(string $scheduleKey): void
+    {
+        /** @var array<int, string> $messageStrings */
+        $messageStrings = $this->redis->zrangebyscore($scheduleKey, '-inf', (string) microtime(true), ['limit' => [0, $this->scheduleBatchSize]]);
+        foreach ($messageStrings as $messageString) {
+            if ($this->redis->zrem($scheduleKey, $messageString) !== 1) {
+                continue;
+            }
+            $this->send($this->serializer->unserialize($messageString));
         }
     }
 
