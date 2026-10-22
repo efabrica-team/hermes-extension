@@ -33,10 +33,11 @@ use Tracy\Debugger;
  *     consumer: null|string,
  *     identity: string,
  * }
- * @phpstan-type XCLAIMResponse array<int, array{
+ * @phpstan-type XClaimMessage array{
  *     0: string,
  *     1: array<int, string>,
- * }>
+ * }
+ * @phpstan-type XCLAIMResponse array<int, XClaimMessage>
  */
 trait MonitoredStreamTrait
 {
@@ -222,10 +223,8 @@ trait MonitoredStreamTrait
                         $id = null;
                         $stream = null;
 
-                        if (isset($monitoredConsumers[$consumer])) {
-                            $id = $monitoredConsumers[$consumer]['body']['id'] ?? null;
-                            $stream = $monitoredConsumers[$consumer]['body']['stream'] ?? null;
-                        }
+                        $id = $monitorData['body']['id'] ?? null;
+                        $stream = $monitorData['body']['stream'] ?? null;
 
                         $pendingMessages = $this->getConsumerPendingList($queue, $group, $consumer, $pending + 10, $id);
                         $foundId = false;
@@ -243,11 +242,12 @@ trait MonitoredStreamTrait
                             $this->redis->rawCommand('XDEL', $queue, $messageId);
                         }
 
+                        /** @var XClaimMessage|null $claimedMessage */
                         $claimedMessage = null;
 
                         if ($foundId && $id !== null) {
-                            /** @var XCLAIMResponse $claimedMessage */
-                            $claimedMessage = $this->redis->rawCommand(
+                            /** @var XCLAIMResponse $claimedMessages */
+                            $claimedMessages = $this->redis->rawCommand(
                                 'XCLAIM',
                                 $queue,
                                 $group,
@@ -255,7 +255,7 @@ trait MonitoredStreamTrait
                                 0,
                                 $id,
                             );
-                            $claimedMessage = count($claimedMessage) === 0 ? null : $claimedMessage[0];
+                            $claimedMessage = count($claimedMessages) === 0 ? null : $claimedMessages[0];
                         }
 
                         $this->redis->rawCommand('XGROUP', 'DELCONSUMER', $queue, $group, $consumer);
@@ -358,10 +358,8 @@ trait MonitoredStreamTrait
                             $id = null;
                             $stream = null;
 
-                            if (isset($monitoredConsumers[$consumerUUID])) {
-                                $id = $monitoredConsumers[$consumerUUID]['body']['id'] ?? null;
-                                $stream = $monitoredConsumers[$consumerUUID]['body']['stream'] ?? null;
-                            }
+                            $id = $monitorData['body']['id'] ?? null;
+                            $stream = $monitorData['body']['stream'] ?? null;
 
                             $pendingMessages = $this->getConsumerPendingList(
                                 $queue,

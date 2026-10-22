@@ -1,0 +1,5 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#Callable callable\(\): mixed invoked with 2 parameters, 0 required\.#'
+			path: src/Driver/Traits/ProcessSignalTrait.php
