@@ -43,7 +43,7 @@ class RedisProxyShutdown implements ShutdownInterface
         return true;
     }
 
-    public function shutdown(DateTime $shutdownTime = null): bool
+    public function shutdown(?DateTime $shutdownTime = null): bool
     {
         if ($shutdownTime === null) {
             $shutdownTime = new DateTime();
